@@ -508,25 +508,22 @@ void setGameLanguage() {
 	}
 }
 
-char* cavetemp_fontFilename;
-__declspec(naked) void fontTableFilenameMethodJmp() {
-	__asm {
-		add     esp, 314h
-		mov     cavetemp_fontFilename, edi
-	}
-	strcpy(cavetemp_fontFilename, current_language->font_table_filename);
-	__asm {
-		retn
-	}
-}
-
 DWORD langAfterJmpAddr;
 __declspec(naked) void getSystemLanguageMethodJmp() {
 	setGameLanguage();
-	langAfterJmpAddr = (DWORD)(H2BaseAddr + 0x3828c);
 	__asm {
 		jmp langAfterJmpAddr
 	}
+}
+
+
+typedef char*(__cdecl *tsub_31b97)(int, int);
+tsub_31b97 psub_31b97;
+char* __cdecl sub_31b97(int buff_len, int a2)//Font Table Filename Override
+{
+	char* result = psub_31b97(buff_len, a2);
+	strcpy_s(result, buff_len, current_language->font_table_filename);
+	return result;
 }
 
 #pragma endregion
@@ -576,8 +573,9 @@ void setCustomLanguage(int main) {
 	setCustomLanguage(main, 0);
 }
 
+
 static void overrideCoreH2Labels() {
-	custom_language* lang_english = get_custom_language(0, 0);
+	/*custom_language* lang_english = get_custom_language(0, 0);
 	add_custom_label(lang_english, 0x000003fd, 0x0a000285, "MULTIPLAYER");
 
 	custom_language* lang_japanese = get_custom_language(1, 0);
@@ -600,14 +598,14 @@ static void overrideCoreH2Labels() {
 
 	custom_language* lang_chinese = get_custom_language(7, 0);
 	add_custom_label(lang_chinese, 0x000003fd, 0x0a000285, "MULTIPLAYER");
-
+	*/
 
 	for (int i = 0; i <= 7; i++) {
 		custom_language* lang = get_custom_language(i, 0);
-		add_custom_label(lang, 0x000003fd, 0x09000284, "");
+		//add_custom_label(lang, 0x000003fd, 0x09000284, "");
 		add_custom_label(lang, 0x000003fd, 0x05000986, "CARTOGRAPHER");
 	}
-}
+} 
 
 void initGSCustomLanguage() {
 	if (!H2IsDediServer) {
@@ -622,16 +620,12 @@ void initGSCustomLanguage() {
 		pH2GetLabel = (tH2GetLabel)DetourClassFunc((BYTE*)H2BaseAddr + 0x3defd, (BYTE*)H2GetLabel, 8);
 		VirtualProtect(pH2GetLabel, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
-		//Kill many much logic
-		BYTE asmNopArray[0xe9];
-		memset(asmNopArray, 0x90, 0xe9);
-		WriteBytesASM(H2BaseAddr + 0x31b9d, asmNopArray, 14);
-		WriteBytesASM(H2BaseAddr + 0x31bb1, asmNopArray, 0xe9);
-		WriteBytesASM(H2BaseAddr + 0x31ce7, asmNopArray, 5);
+		//Hook the function that sets the font table filename.
+		psub_31b97 = (tsub_31b97)DetourFunc((BYTE*)H2BaseAddr + 0x31b97, (BYTE*)sub_31b97, 6);
+		VirtualProtect(psub_31b97, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
-		//Hook the end of the function and modify the returned string.
-		DetourFunc((BYTE*)H2BaseAddr + 0x31cec, (BYTE*)fontTableFilenameMethodJmp, 6);
 		//Hook the part where it sets the global language id.
+		langAfterJmpAddr = (DWORD)(H2BaseAddr + 0x3828c);
 		DetourFunc((BYTE*)H2BaseAddr + 0x3820d, (BYTE*)getSystemLanguageMethodJmp, 6);
 
 		bool redoCapture = H2Config_custom_labels_capture_missing;
