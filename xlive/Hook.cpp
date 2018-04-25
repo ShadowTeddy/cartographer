@@ -91,39 +91,37 @@ void *VTableFunction(void *ClassPtr, DWORD index)
 	return pVtable[index];
 }
 
-VOID WriteBytesASM(DWORD destAddress, LPVOID patch, DWORD numBytes)
+void WriteBytes(DWORD destAddress, LPVOID bytesToWrite, int numBytes)
 {
-	DWORD oldProtect = 0;
-	DWORD srcAddress = PtrToUlong(patch);
+	DWORD OldProtection;
+	DWORD temp;
 
-	VirtualProtect((void*)(destAddress), numBytes, PAGE_EXECUTE_READWRITE, &oldProtect);
+	VirtualProtect((LPVOID)destAddress, numBytes, PAGE_EXECUTE_READWRITE, &OldProtection);
+	memcpy((LPVOID)destAddress, bytesToWrite, numBytes);
+	VirtualProtect((LPVOID)destAddress, numBytes, OldProtection, &temp); //quick fix for exception that happens here
+}
 
-	__asm
-	{
-		nop
-			nop
-			nop
+void PatchCall(DWORD call_addr, DWORD new_function_ptr) {
+	DWORD callRelative = new_function_ptr - (call_addr + 5);
+	WritePointer(call_addr + 1, reinterpret_cast<void*>(callRelative));
+}
 
-			mov esi, srcAddress
-			mov edi, destAddress
-			mov ecx, numBytes
-		Start :
-		cmp ecx, 0
-			jz Exit
+void WritePointer(DWORD offset, void *ptr) {
+	BYTE* pbyte = (BYTE*)&ptr;
+	BYTE assmNewFuncRel[0x4] = { pbyte[0], pbyte[1], pbyte[2], pbyte[3] };
+	WriteBytes(offset, assmNewFuncRel, 0x4);
+}
 
-			mov al, [esi]
-			mov[edi], al
-			dec ecx
-			inc esi
-			inc edi
-			jmp Start
-		Exit :
-		nop
-			nop
-			nop
-	}
+void PatchWinAPICall(DWORD call_addr, DWORD new_function_ptr)
+{
+	BYTE call = 0xE8;
+	WriteValue(call_addr, call);
 
-	VirtualProtect((void*)(destAddress), numBytes, oldProtect, &oldProtect);
+	PatchCall(call_addr, new_function_ptr);
+
+	// pad the extra unused byte
+	BYTE padding = 0x90;
+	WriteValue(call_addr + 5, padding);
 }
 
 VOID Codecave(DWORD destAddress, VOID(*func)(VOID), BYTE nopCount)
@@ -136,7 +134,7 @@ VOID Codecave(DWORD destAddress, VOID(*func)(VOID), BYTE nopCount)
 
 	BYTE patch[5] = { 0xE8, 0x00, 0x00, 0x00, 0x00 };
 	memcpy(patch + 1, &offset, sizeof(DWORD));
-	WriteBytesASM(destAddress, patch, 5);
+	WriteBytes(destAddress, patch, 5);
 
 	if (nopCount == 0)
 		return;
@@ -145,5 +143,5 @@ VOID Codecave(DWORD destAddress, VOID(*func)(VOID), BYTE nopCount)
 	memset(nopPatch, 0x90, nopCount);
 
 
-	WriteBytesASM(destAddress + 5, nopPatch, nopCount);
+	WriteBytes(destAddress + 5, nopPatch, nopCount);
 }

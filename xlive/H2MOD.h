@@ -1,10 +1,13 @@
 #pragma once
-#ifndef H2MOD_H
-#define H2MOD_H
+
 #include "Hook.h"
 #include <unordered_map>
 #include <set>
 #include <mutex>
+
+#define SINGLE_PLAYER_ENGINE 1
+#define MULTIPLAYER_ENGINE 2
+#define MAIN_MENU_ENGINE 3
 
 enum GrenadeType
 {
@@ -80,8 +83,6 @@ int __cdecl call_object_placement_data_new(void*, int, int, int);
 signed int __cdecl call_object_new(void*);
 void GivePlayerWeapon(int PlayerIndex, int WeaponId, bool bReset);
 DWORD WINAPI NetworkThread(LPVOID lParam);
-void Field_of_View(int field_of_view);
-void AlterCrosshairOffset();
 
 class NetworkPlayer
 {
@@ -128,12 +129,16 @@ public:
 		void set_local_grenades(BYTE type, BYTE count, int pIndex);
 		void DisableSound(int sound);
 		void PatchNewRound(bool hackit); 
-		void PatchWeaponsInteraction(bool b_Enable);
+		void PatchWeaponsInteraction(bool b_Enable);		
+		void securityPacketProcessing();
 		BOOL Server;
 		std::unordered_map<NetworkPlayer*, bool> NetworkPlayers;
 		std::unordered_map<wchar_t*, int> SoundMap;
 		std::unordered_map<std::string, bool> AchievementMap;
+	
+
 		std::mutex sound_mutex;
+		std::condition_variable sound_cv;
 
 		std::set<int> hookedObjectDefs;
 		bool isChatBoxCommand = false;
@@ -147,6 +152,3 @@ private:
 
 extern H2MOD* h2mod;
 
-
-
-#endif

@@ -4,6 +4,8 @@
 #include <sstream>
 #include <string>
 #include "H2Startup.h"
+#include "H2Tweaks.h"
+#include "H2Config.h"
 
 ConsoleCommands::ConsoleCommands() {
 	command = "";
@@ -146,6 +148,11 @@ void ConsoleCommands::output(std::wstring result) {
 	}
 }
 
+void ConsoleCommands::display(std::string output)
+{
+	writePreviousCommand(output);
+}
+
 bool ConsoleCommands::isNum(const char *s) {
 	int i = 0;
 	while (s[i]) {
@@ -156,6 +163,10 @@ bool ConsoleCommands::isNum(const char *s) {
 		i++;
 	}
 	return true;
+}
+
+void downloadFromRepoThruConsole(std::string mapFilename) {
+	mapManager->downloadFromRepo(mapFilename);
 }
 
 /*
@@ -194,7 +205,7 @@ void ConsoleCommands::handle_command(std::string command) {
 					h2mod->kick_player(atoi(cstr));
 				}
 			}
-			delete cstr;
+			delete[] cstr;
 		}
 		else if (firstCommand == "$lognetworkplayers") {
 			//TODO: use mutex here
@@ -214,32 +225,38 @@ void ConsoleCommands::handle_command(std::string command) {
 				return;
 			}
 
-			std::string secondArg = splitCommands[1];
-			int maxPlayersSet = stoi(splitCommands[1]);
+			std::string firstArg = splitCommands[1];
+			char *cstr = new char[firstArg.length() + 1];
+			strcpy(cstr, firstArg.c_str());
 
-			int baseAddr = (int)*(int*)((char*)h2mod->GetBase() + 0x420FE8);
-			BYTE& playerNumber = *(BYTE*)(baseAddr + 0x1254);
-			BYTE& maxPlayersNumber = *(BYTE*)(baseAddr + 0x4C80);
+			DWORD lobby_globals = *(DWORD*)((char*)h2mod->GetBase() + 0x420FE8);
+			BYTE playerNumber = *(BYTE*)(lobby_globals + 0x1254);
 
-			if (maxPlayersSet < 1 || maxPlayersSet > 16) {
-				output(L"The value needs to be between 1 and 16.");
-				return;
+			if (isNum(cstr)) {
+				delete[] cstr;
+
+				int maxPlayersSet = stoi(firstArg);
+				if (maxPlayersSet < 1 || maxPlayersSet > 16) {
+					output(L"The value needs to be between 1 and 16.");
+					return;
+				}
+
+				if (maxPlayersSet < playerNumber) {
+					output(L"You can't set a value of max players smaller than the actual number of players on the server.");
+					return;
+				}
+				else {
+					*(BYTE*)(lobby_globals + 0x4C80) = maxPlayersSet;
+					output(L"Maximum players set");
+					return;
+				}
 			}
-
-			if (maxPlayersSet < playerNumber) {
-				output(L"You can't set a value of max players smaller than the actual number of players on the server.");
-				return;
-			}
-			else {
-				maxPlayersNumber = maxPlayersSet;
-				output(L"Maximum players set");
-			}
-
+			delete[] cstr;
 		}
 		else if (firstCommand == "$resetspawncommandlist") {
 			//reset checked_for_ids, so you can reload new object_datums at runtime
 			this->checked_for_ids = false;
-		}	
+		}
 		else if (firstCommand == "$spawnnear") {
 			if (splitCommands.size() < 3 || splitCommands.size() > 4) {
 				output(L"Invalid command, usage $spawn command_name count");
@@ -272,7 +289,7 @@ void ConsoleCommands::handle_command(std::string command) {
 			if (splitCommands.size() == 4) {
 				//optional multiplier provided
 				std::string fourthArg = splitCommands[3];
-				randomMultiplier = stoi(fourthArg);
+				randomMultiplier = stof(fourthArg);
 			}
 
 			int count = 1;
@@ -288,6 +305,28 @@ void ConsoleCommands::handle_command(std::string command) {
 			float z = *(float*)(h2mod->GetBase() + 0x4C0730);
 
 			this->spawn(object_datum, count, x += 0.5f, y += 0.5f, z += 0.5f, randomMultiplier);
+		}
+		else if (firstCommand == "$ishost") {
+			int packetDataObj = (*(int*)(h2mod->GetBase() + 0x420FE8));
+			std::wstring isHostStr = L"isHost=";
+			DWORD isHostByteValue = *(DWORD*)(packetDataObj + 29600);
+			std::wostringstream ws;
+			ws << isHostByteValue;
+			const std::wstring s(ws.str());
+			isHostStr += (gameManager->isHost() ? L"yes" : L"no");
+			isHostStr += L",value=";
+			isHostStr += s;
+			output(isHostStr);
+		}
+		else if (firstCommand == "$downloadmap") {
+			if (splitCommands.size() != 2 && !splitCommands[1].empty()) {
+				output(L"Invalid command, usage downloadMap filename");
+				return;
+			}
+			std::string secondArg = splitCommands[1];
+			secondArg += ".map";
+			std::thread t1(downloadFromRepoThruConsole, secondArg);
+			t1.detach();
 		}
 		else if (firstCommand == "$spawn") {
 			if (splitCommands.size() != 6) {
@@ -318,11 +357,50 @@ void ConsoleCommands::handle_command(std::string command) {
 			}
 
 			int count = stoi(thirdArg);
-			int x = stoi(splitCommands[3]);
-			int y = stoi(splitCommands[4]);
-			int z = stoi(splitCommands[5]);
+			float x = stof(splitCommands[3]);
+			float y = stof(splitCommands[4]);
+			float z = stof(splitCommands[5]);
 
 			this->spawn(object_datum, count, x, y, z, 1.0f);
+		}
+		else if (firstCommand == "$controller_sens") {
+			if (splitCommands.size() != 2) {
+				output(L"Invalid usage, usage $controller_sens value");
+				return;
+			}
+			std::string sensVal = splitCommands[1];
+			char *cstr = new char[sensVal.length() + 1];
+			strcpy(cstr, sensVal.c_str());
+
+			if (isNum(cstr)) {
+				setSens(CONTROLLER, stoi(sensVal)); 
+				H2Config_sens_controller = stoi(sensVal);
+			}
+			else {
+				output(L"Wrong input! Use a number.");
+			}
+			delete[] cstr;
+		}
+		else if (firstCommand == "$mouse_sens") {
+			if (splitCommands.size() != 2) {
+				output(L"Invalid usage, usage $mouse_sens value");
+				return;
+			}
+			std::string sensVal = splitCommands[1];
+			char *cstr = new char[sensVal.length() + 1];
+			strcpy(cstr, sensVal.c_str());
+
+			if (isNum(cstr)) {
+				setSens(MOUSE, stoi(sensVal));
+				H2Config_sens_mouse = stoi(sensVal);
+			}
+			else {
+				output(L"Wrong input! Use a number.");
+			}
+			delete[] cstr;
+		}
+		else {
+			output(L"Unknown command.");
 		}
 	}
 }

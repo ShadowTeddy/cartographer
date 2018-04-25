@@ -14,17 +14,6 @@
 #pragma comment(lib, "libcurl_a.lib")
 #endif
 
-void PatchCall(DWORD call_addr, DWORD new_function_ptr) {
-	DWORD callRelative = new_function_ptr - (call_addr + 5);
-	WritePointer(call_addr + 1, reinterpret_cast<void*>(callRelative));
-}
-
-void WritePointer(DWORD offset, void *ptr) {
-	BYTE* pbyte = (BYTE*)&ptr;
-	BYTE assmNewFuncRel[0x4] = { pbyte[0], pbyte[1], pbyte[2], pbyte[3] };
-	WriteBytesASM(offset, assmNewFuncRel, 0x4);
-}
-
 void HexToByteArray(BYTE* byteArray, char* pointerHex) {
 	char totext2[32];
 	memset(totext2, '0', 1);
@@ -93,21 +82,101 @@ bool GetFileLine(FILE* fp, char* &fileLine) {
 	return moretogo || fileLine != 0;
 }
 
-void ReadIniFile(void* fileConfig, bool configIsFILE, const char* header, const int headerVersion, int(interpretSettingFunc)(char* fileLine, int version, int lineNumber)) {
+bool GetNTStringLine(char* text, int lineNum, char* &line) {
+	int inc_line_num = 0;
+	char* line_begin = text;
+
+	while (inc_line_num++ < lineNum) {
+		line_begin = strchr(line_begin, '\n');
+		if (line_begin++ == 0) {
+			return false;
+		}
+	}
+
+	int line_len = 0;
+	char* line_next = strchr(line_begin, '\n');
+	if (line_next == 0) {
+		line_len = strlen(line_begin);
+	}
+	else {
+		if (*(line_next - 1) == '\r') {
+			line_next--;
+		}
+		line_len = line_next - line_begin;
+	}
+
+	if (line_len <= 0) {
+		line = 0;
+		return true;
+	}
+
+	line = (char*)malloc(sizeof(char) * (line_len + 1));
+
+	memcpy(line, line_begin, line_len);
+	line[line_len] = 0;
+
+	return true;
+}
+
+//if missing versioning parameters, major will always be on leftmost side.
+char CmpVersions(char* version_base, char* version_alt) {
+
+	if (strcmp(version_base, version_alt) == 0)
+		return 0b00000;//same
+
+	int versions[2][4];
+	for (int j = 0; j < 2; j++) {
+		for (int i = 0; i < 4; i++) {
+			versions[j][i] = 0;
+		}
+	}
+
+	if (sscanf_s(version_base, "%d.%d.%d.%d", &versions[0][0], &versions[0][1], &versions[0][2], &versions[0][3]) <= 0) {
+		return 0b10000;//invalid
+	}
+
+	if (sscanf_s(version_alt, "%d.%d.%d.%d", &versions[1][0], &versions[1][1], &versions[1][2], &versions[1][3]) <= 0) {
+		return 0b10000;//invalid
+	}
+
+	for (int i = 0; i < 4; i++) {
+		if (versions[0][i] == versions[1][i]) {
+			continue;
+		}
+		else if (versions[0][i] > versions[1][i]) {//alt is old
+			return 0b10000 | (0b1000 >> i);
+		}
+		else {//alt is new
+			return 0b00000 | (0b1000 >> i);
+		}
+	}
+
+	return 0b00000;//same
+	//return 0b01000;//new major
+	//return 0b00100;//new minor
+	//return 0b00010;//new revision
+	//return 0b00001;//new build
+	//return 0b11000;//old major
+	//return 0b10100;//old minor
+	//return 0b10010;//old revision
+	//return 0b10001;//old build
+}
+
+void ReadIniFile(void* fileConfig, bool configIsFILE, const char* header, char* headerVersion, int(interpretSettingFunc)(char* fileLine, char* version, int lineNumber)) {
 	bool foundFirstHeader = false;
-	int version = -1;
+	char version[30] = "0";
 	bool keepReading = true;
 	int lineNumber = 0;
 	char* fileLine;
-	while (keepReading && ((configIsFILE && GetFileLine((FILE*)fileConfig, fileLine)) || (!configIsFILE && false))) {//TODO
+	while (keepReading && ((configIsFILE && GetFileLine((FILE*)fileConfig, fileLine)) || (!configIsFILE && GetNTStringLine((char*)fileConfig, lineNumber, fileLine)))) {
 		lineNumber++;
 		if (fileLine) {
-			if (fileLine[0] == header[0] && sscanf(fileLine, header, &version)) {
+			if (fileLine[0] == header[0] && sscanf_s(fileLine, header, &version, 30)) {
 				foundFirstHeader = true;
 				char debugTextBuffer[50];
-				snprintf(debugTextBuffer, 50, "Found header on line %d asseting version: %d", lineNumber, version);
+				snprintf(debugTextBuffer, 50, "Found header on line %d asserting version: %s", lineNumber, version);
 				addDebugText(debugTextBuffer);
-				if (version == headerVersion) {
+				if (CmpVersions(headerVersion, version) == 0) {//does not send this line to interpreter.
 					free(fileLine);
 					continue;
 				}
@@ -115,10 +184,7 @@ void ReadIniFile(void* fileConfig, bool configIsFILE, const char* header, const 
 					addDebugText("Incorrect Version! Continue searching!");
 				}
 			}
-			int rtnCode = 0;
-			if (foundFirstHeader) {
-				rtnCode = interpretSettingFunc(fileLine, version, lineNumber);
-			}
+			int rtnCode = interpretSettingFunc(fileLine, foundFirstHeader ? version : 0, lineNumber);
 			if (!(rtnCode & 0b10)) {
 				free(fileLine);
 				if (rtnCode & 0b1)
@@ -252,6 +318,72 @@ int ComputeFileMd5Hash(wchar_t* filepath, char* rtnMd5) {
 	CryptDestroyHash(hHash);
 	CryptReleaseContext(hProv, 0);
 	CloseHandle(hFile);
+
+	return dwStatus;
+}
+
+int ComputeMd5Hash(const BYTE* buffer, int buflen, char* rtnMd5) {
+	for (int i = 0; i < 33; i++) {
+		rtnMd5[i] = 0;
+	}
+
+	const int MD5LEN = 16;
+	DWORD dwStatus = 0;
+	HCRYPTPROV hProv = 0;
+	HCRYPTHASH hHash = 0;
+	BYTE rgbHash[MD5LEN];
+	DWORD cbHash = 0;
+	CHAR rgbDigits[] = "0123456789abcdef";
+	//LPCWSTR filename = L"xinput9_1_0.dll";
+	// Logic to check usage goes here.
+
+
+	// Get handle to the crypto provider
+	if (!CryptAcquireContext(&hProv,
+		NULL,
+		NULL,
+		PROV_RSA_FULL,
+		CRYPT_VERIFYCONTEXT))
+	{
+		dwStatus = GetLastError();
+		strcpy(rtnMd5, "CryptAcquireContext");
+		return dwStatus;
+	}
+
+	if (!CryptCreateHash(hProv, CALG_MD5, 0, 0, &hHash))
+	{
+		dwStatus = GetLastError();
+		strcpy(rtnMd5, "CryptAcquireContext");
+		CryptReleaseContext(hProv, 0);
+		return dwStatus;
+	}
+
+	if (!CryptHashData(hHash, buffer, buflen, 0))
+	{
+		dwStatus = GetLastError();
+		strcpy(rtnMd5, "CryptHashData");
+		CryptReleaseContext(hProv, 0);
+		CryptDestroyHash(hHash);
+		return dwStatus;
+	}
+
+	cbHash = MD5LEN;
+	if (CryptGetHashParam(hHash, HP_HASHVAL, rgbHash, &cbHash, 0))
+	{
+		for (DWORD i = 0; i < cbHash; i++)
+		{
+			rtnMd5[i * 2] = rgbDigits[rgbHash[i] >> 4];
+			rtnMd5[(i * 2) + 1] = rgbDigits[rgbHash[i] & 0xf];
+		}
+	}
+	else
+	{
+		dwStatus = GetLastError();
+		strcpy(rtnMd5, "CryptGetHashParam");
+	}
+
+	CryptDestroyHash(hHash);
+	CryptReleaseContext(hProv, 0);
 
 	return dwStatus;
 }
@@ -412,6 +544,53 @@ DWORD crc32buf(char* buf, size_t len)
 	return ~oldcrc32;
 }
 
+bool ComputeFileCrc32Hash(wchar_t* filepath, DWORD &rtncrc32) {
+
+	register DWORD oldcrc32;
+
+	oldcrc32 = 0xFFFFFFFF;
+
+	const int BUFSIZE = 1024;
+	BOOL bResult = FALSE;
+	HANDLE hFile = NULL;
+	BYTE rgbFile[BUFSIZE];
+	DWORD cbRead = 0;
+
+	hFile = CreateFile(filepath,
+		GENERIC_READ,
+		FILE_SHARE_READ,
+		NULL,
+		OPEN_EXISTING,
+		FILE_FLAG_SEQUENTIAL_SCAN,
+		NULL);
+
+	if (INVALID_HANDLE_VALUE == hFile)
+	{
+		return false;
+	}
+
+	while (bResult = ReadFile(hFile, rgbFile, BUFSIZE, &cbRead, NULL))
+	{
+		if (cbRead == 0) {
+			break;
+		}
+
+		for (int i = 0; i < cbRead; i++) {
+			oldcrc32 = UPDC32(rgbFile[i], oldcrc32);
+		}
+	}
+
+	if (!bResult) {
+		return false;
+	}
+
+	CloseHandle(hFile);
+
+	rtncrc32 = ~oldcrc32;
+
+	return true;
+}
+
 static bool rfc3986_allow(char i) {
 	//isalnum(i)//PoS crashes
 	if ((i >= '0' && i <= '9') || 
@@ -422,18 +601,17 @@ static bool rfc3986_allow(char i) {
 	return false;
 }
 
-char* escape_rfc3986(char* label_literal) {
-	int label_literal_length = strlen(label_literal);
+char* encode_rfc3986(char* label_literal, int label_literal_length) {
+	if (label_literal_length < 0)
+		label_literal_length = strlen(label_literal);
 	int escaped_buflen = (label_literal_length * 3) + 1;
 	char* label_escaped = (char*)malloc(escaped_buflen * sizeof(char));
 	int escaped_buff_i = 0;
 
 	for (int i = 0; i < label_literal_length; i++) {
-		if (label_literal[i] < 0 || label_literal[i] > 0xFF) {//fuckin negative assholes.
-
-		}
-		else if (!rfc3986_allow(label_literal[i])) {
-			sprintf_s(label_escaped + escaped_buff_i, 4, "%%%02X", label_literal[i]);
+		unsigned char uletter = label_literal[i];
+		if (!rfc3986_allow(uletter)) {
+			sprintf_s(label_escaped + escaped_buff_i, 4, "%%%02X", uletter);
 			escaped_buff_i += 2;
 		}
 		else {
@@ -503,7 +681,7 @@ int MasterHttpResponse(char* url, char* http_request, char* &rtn_response) {
 	CURLcode global_init = curl_global_init(CURL_GLOBAL_ALL);
 	if (global_init != CURLE_OK) {
 		char NotificationPlayerText[100];
-		snprintf(NotificationPlayerText, 100, "curl_global_init(CURL_GLOBAL_ALL) failed: %s\n", curl_easy_strerror(global_init));
+		snprintf(NotificationPlayerText, 100, "curl_global_init(CURL_GLOBAL_ALL) failed: %s", curl_easy_strerror(global_init));
 		addDebugText(NotificationPlayerText);
 	}
 
@@ -515,12 +693,12 @@ int MasterHttpResponse(char* url, char* http_request, char* &rtn_response) {
 		data. */
 		curl_easy_setopt(curl, CURLOPT_URL, url);
 
-		//https://curl.haxx.se/libcurl/c/CURLOPT_PINNEDPUBLICKEY.html
-		//not working correctly afaik
-		//curl_easy_setopt(curl, CURLOPT_PINNEDPUBLICKEY, "");
-
 		struct stringMe s;
 		init_string(&s);
+
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+		//FIXME: <Insert Pinned Public Key Here>
 
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
@@ -533,8 +711,8 @@ int MasterHttpResponse(char* url, char* http_request, char* &rtn_response) {
 		/* Check for errors */
 		if (res != CURLE_OK) {
 			result = ERROR_CODE_CURL_EASY_PERF;//curl_easy_perform() issue
-			char NotificationPlayerText[50];
-			snprintf(NotificationPlayerText, 50, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+			char NotificationPlayerText[500];
+			snprintf(NotificationPlayerText, 500, "curl_easy_perform() failed: %s", curl_easy_strerror(res));
 			addDebugText(NotificationPlayerText);
 			free(s.ptr);
 		}
@@ -553,3 +731,73 @@ int MasterHttpResponse(char* url, char* http_request, char* &rtn_response) {
 
 	return result;
 }
+
+bool StrnCaseInsensEqu(char* str1, char* str2, unsigned int chk_len) {
+	int chk_len2 = strlen(str1);
+	if (chk_len2 < chk_len) {
+		chk_len = chk_len2;
+	}
+	chk_len2 = strlen(str2);
+	if (chk_len2 != chk_len) {
+		return false;
+	}
+	const int case_diff = 'A' - 'a';
+	for (int i = 0; i < chk_len; i++) {
+		if (str1[i] != str2[i]) {
+			int sa = str1[i];
+			if (sa >= 'a' && sa <= 'z') {
+				sa += case_diff;
+			}
+			else if (sa >= 'A' && sa <= 'Z') {
+				sa -= case_diff;
+			}
+			if (sa == str2[i]) {
+				continue;
+			}
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void EnsureDirectoryExists(wchar_t* path) {
+	int buflen = wcslen(path) + 1;
+	wchar_t* path2 = (wchar_t*)malloc(sizeof(wchar_t) * buflen);
+	memcpy(path2, path, sizeof(wchar_t) * buflen);
+
+	for (int i = 1; i < buflen; i++) {
+		if (path2[i] == L'/' || path2[i] == L'\\') {
+			wchar_t temp_cut = 0;
+			if (path2[i + 1] != 0) {
+				temp_cut = path2[i + 1];
+				path2[i + 1] = 0;
+			}
+			CreateDirectoryW(path2, NULL);
+			if (temp_cut) {
+				path2[i + 1] = temp_cut;
+			}
+		}
+	}
+
+	free(path2);
+}
+
+int TrimRemoveConsecutiveSpaces(char* text) {
+	int text_len = strlen(text);
+	int text_pos = 0;
+	for (int j = 0; j < text_len; j++) {
+		if (text_pos == 0) {
+			if (text[j] != ' ')
+				text[text_pos++] = text[j];
+			continue;
+		}
+		if (!(text[j] == ' ' && text[text_pos - 1] == ' '))
+			text[text_pos++] = text[j];
+	}
+	text[text_pos] = 0;
+	if (text[text_pos - 1] == ' ')
+		text[--text_pos] = 0;
+	return text_pos;//new length
+}
+

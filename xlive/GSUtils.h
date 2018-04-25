@@ -1,16 +1,16 @@
 #pragma once
 #include "stdafx.h"
 
-void PatchCall(DWORD call_addr, DWORD new_function_ptr);
-void WritePointer(DWORD offset, void *ptr);
 void HexToByteArray(BYTE* byteArray, char* pointerHex);
 int FindLineStart(FILE* fp, int lineStrLen);
 ///FREE MEMOERY in fileLine
 bool GetFileLine(FILE* fp, char* &fileLine);
-void ReadIniFile(void* fileConfig, bool configIsFILE, const char* header, const int headerVersion, int(interpretSettingFunc)(char* fileLine, int version, int lineNumber));
+char CmpVersions(char* version_base, char* version_alt);
+void ReadIniFile(void* fileConfig, bool configIsFILE, const char* header, char* headerVersion, int(interpretSettingFunc)(char* fileLine, char* version, int lineNumber));
 void GetVKeyCodeString(int vkey, char* rtnString, int strLen);
 void PadCStringWithChar(char* strToPad, int toFullLength, char c);
 int ComputeFileMd5Hash(wchar_t* filepath, char* rtnMd5);
+int ComputeMd5Hash(const BYTE* buffer, int buflen, char* rtnMd5);
 int GetWidePathFromFullWideFilename(wchar_t* filepath, wchar_t* rtnpath);
 LONG GetDWORDRegKey(HKEY hKey, wchar_t* strValueName, DWORD* nValue);
 void pushHostLobby();
@@ -73,18 +73,26 @@ static UNS_32_BITS crc_32_tab[] = { /* CRC polynomial 0xedb88320 */
 
 #define UPDC32(octet, crc) (crc_32_tab[((crc) ^ (octet)) & 0xff] ^ ((crc) >> 8))
 DWORD crc32buf(char* buf, size_t len);
+bool ComputeFileCrc32Hash(wchar_t* filepath, DWORD &rtncrc32);
 
-char* escape_rfc3986(char* label_literal);
+char* encode_rfc3986(char* label_literal, int label_literal_length = -1);
 void wcstombs2(char* buffer, wchar_t* text, int buf_len);
 
 extern const int ERROR_CODE_CURL_SOCKET_FAILED;
 extern const int ERROR_CODE_CURL_HANDLE;
 extern const int ERROR_CODE_CURL_EASY_PERF;
+///FREE MEMOERY in rtn_response if returned 0 (success).
 int MasterHttpResponse(char* url, char* http_request, char* &rtn_response);
+
+bool StrnCaseInsensEqu(char* str1, char* str2, unsigned int chk_len);
+
+void EnsureDirectoryExists(wchar_t* path);
+
+int TrimRemoveConsecutiveSpaces(char* text);
 
 #define J( symbol1, symbol2 ) _DO_JOIN( symbol1, symbol2 )
 #define _DO_JOIN( symbol1, symbol2 ) symbol1##symbol2
 #define NopFill(Address, len)                       \
 	BYTE J(NopFIll_, __LINE__ )[len];               \
 	std::fill_n(J(NopFIll_, __LINE__ ), len, 0x90); \
-	WriteBytesASM(Address, J(NopFIll_, __LINE__ ), len)
+	WriteBytes(Address, J(NopFIll_, __LINE__ ), len)

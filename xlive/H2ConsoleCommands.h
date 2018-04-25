@@ -1,5 +1,4 @@
-#ifndef CHATBOX_COMMANDS_H
-#define CHATBOX_COMMANDS_H
+#pragma once
 
 class ConsoleCommands {
 public:
@@ -7,6 +6,7 @@ public:
 	void handle_command(std::string);
 	void spawn(unsigned int object_datum, int count, float x, float y, float z, float randomMultiplier);
 	void output(std::wstring result);
+	void display(std::string output);
 	std::vector<std::string> prevCommands;
 	BOOL handleInput(WPARAM wp);
 
@@ -22,5 +22,3 @@ private:
 	std::unordered_map<std::string, unsigned int> object_ids;
 	DWORD sleepTime;
 };
-
-#endif

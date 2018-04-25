@@ -9,6 +9,7 @@
 #include "H2Tweaks.h"
 #include <sys/stat.h>
 #include "GSAccountLogin.h"
+#include "Util\Debug.h"
 
 
 bool H2IsDediServer;
@@ -67,7 +68,7 @@ void configureXinput() {
 	if (!H2IsDediServer) {
 		if (H2GetInstanceId() > 1) {
 			BYTE xinputNumFix[] = { '0' + (H2GetInstanceId() / 10), 0, '0' + (H2GetInstanceId() % 10) };
-			WriteBytesASM((DWORD)xinputdllPath + 16, xinputNumFix, 3);
+			WriteBytes((DWORD)xinputdllPath + 16, xinputNumFix, 3);
 
 			char pointerHex[20];
 			sprintf(pointerHex, "%x", (DWORD)xinputdllPath);
@@ -79,7 +80,7 @@ void configureXinput() {
 			addDebugText(totext);
 
 			BYTE assmXinputPushIntructionPart[] = { byteArray[3], byteArray[2], byteArray[1], byteArray[0] };
-			WriteBytesASM(H2BaseAddr + 0x8AD28, assmXinputPushIntructionPart, 4);
+			WriteBytes(H2BaseAddr + 0x8AD28, assmXinputPushIntructionPart, 4);
 
 			char xinputName[40];
 			char xinputdir[12];
@@ -263,6 +264,7 @@ int __cdecl sub_48BBF() {
 
 ///Before the game window appears
 void InitH2Startup() {
+	Debug::init();
 
 	int ArgCnt;
 	LPWSTR* ArgList = CommandLineToArgvW(GetCommandLineW(), &ArgCnt);
@@ -325,8 +327,11 @@ void InitH2Startup() {
 	addDebugText("ProcessStartup finished.");
 }
 
+#include "GSDownload.h"
+
 ///After the game window appears
 void InitH2Startup2() {
+	InitGSDownload();
 
 	if (H2IsDediServer) {
 		addDebugText("Logging the Dedi Server in...");

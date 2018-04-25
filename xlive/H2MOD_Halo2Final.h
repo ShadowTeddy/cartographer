@@ -1,6 +1,4 @@
 #pragma once
-#ifndef H2MOD_H2FINAL
-#define H2MOD_H2FINAL
 
 class Halo2FinalSettings
 {
@@ -89,7 +87,7 @@ public:
 	float car_fire_recovery_time = 0.14f;
 	float car_error_angle = 0.f;
 	float car_damage = 11.f;
-	float car_camo_ding = 0.2;
+	float car_camo_ding = 0.2f;
 	float car_camo_regrowth_rate = 0.25f;
 
 	//Shotty
@@ -116,9 +114,8 @@ public:
 class Halo2Final
 {
 public:
-	void Initialize(bool isHost);
+	void Initialize();
 	void Dispose();
 private:
 	Halo2FinalSettings *settings;
 };
-#endif

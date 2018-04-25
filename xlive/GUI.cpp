@@ -15,6 +15,7 @@
 #include "H2OnscreenDebugLog.h"
 #include "H2ConsoleCommands.h"
 #include "H2Config.h"
+#include <time.h>
 
 extern ConsoleCommands* commands;
 
@@ -22,7 +23,6 @@ extern ConsoleCommands* commands;
 extern void InitInstance();
 extern bool overrideUnicodeMessage;
 extern MapManager* mapManager;
-
 
 
 typedef struct _XLIVE_INITIALIZE_INFO {
@@ -62,10 +62,10 @@ const char CompileTime[] = __TIME__;
 int verticalRes = 0;
 int horizontalRes = 0;
 
-int normalSizeCurrentFontHeight = 0;
-int largeSizeCurrentFontHeight = 0;
-int largeSizeFontHeight = 0;
-int normalSizeFontHeight = 0;
+double normalSizeCurrentFontHeight = 0;
+double largeSizeCurrentFontHeight = 0;
+double largeSizeFontHeight = 0;
+double normalSizeFontHeight = 0;
 
 LPD3DXFONT normalSizeFont = 0;
 LPD3DXFONT largeSizeFont = 0;
@@ -141,12 +141,11 @@ void GUI::Initialize()
 	
 	if (FAILED(D3DXCreateTextureFromFile(pDevice, "sounds/h2pc_logo.png", &Texture_Interface) ) )
 	{
-		MessageBoxA(NULL, "Failed to create texture", "failure", MB_OK);
+		addDebugText("ERROR: Failed to create logo texture (for achievements).");
 	}
 
 	D3DXCreateSprite(pDevice, &Sprite_Interface);
 
-	
 }
 
 bool once1 = false;
@@ -306,7 +305,7 @@ void drawRect(int x, int y, int width, int height, DWORD Color)
 	pDevice->Clear(1, &rec, D3DCLEAR_TARGET, Color, 0, 0);
 }
 
-void drawPrimitiveRect(int x, int y, int w, int h, D3DCOLOR color) {
+void drawPrimitiveRect(FLOAT x, FLOAT y, FLOAT w, FLOAT h, D3DCOLOR color) {
 	CVertexList vertexList[4];
 
 	BuildVertex(D3DXVECTOR4(x, y + h, 0, 1), color, vertexList, 0);
@@ -448,10 +447,41 @@ void drawText(int x, int y, DWORD color, const char* text, LPD3DXFONT pFont)
 	pFont->DrawTextA(NULL, text, -1, &rect, DT_LEFT | DT_NOCLIP, color);
 }
 
+typedef struct {
+	int x;
+	int y;
+	bool xp;
+	bool yp;
+} exit_countdown_label;
+
+static std::vector<exit_countdown_label*> exit_countdown_labels;
+
+static void create_exit_countdown_label() {
+	D3DVIEWPORT9 pViewport;
+	pDevice->GetViewport(&pViewport);
+	int width = pViewport.Width;
+	int height = pViewport.Height;
+
+	exit_countdown_label* exit_cnd_lbl = (exit_countdown_label*)malloc(sizeof(exit_countdown_label));
+	exit_cnd_lbl->x = rand() % width;
+	exit_cnd_lbl->y = rand() % height;
+	exit_cnd_lbl->xp = rand() % 2 ? true : false;
+	exit_cnd_lbl->yp = rand() % 2 ? true : false;
+
+	exit_countdown_labels.push_back(exit_cnd_lbl);
+}
+
+unsigned long time_end = 0;
+static int time_sec = 0;
+static unsigned char add_exit_countdown_label = 4;
+static char exit_countdown_timer_label[10] = "30:00";
+
 bool StatusCheater = false;
 int achievement_height = 0;
 bool achievement_freeze = false;
 int achievement_timer = 0;
+
+char* Auto_Update_Text = 0;
 
 // #5002: XLiveRender
 int WINAPI XLiveRender()
@@ -482,13 +512,13 @@ int WINAPI XLiveRender()
 			if (commands->console) {
 				int x = 0, y = 0;
 				int height = 400;
-				int startingPosY = height - 15;
+				float startingPosY = height - 15.0f;
 				drawPrimitiveRect(x, y, gameWindowWidth, height, D3DCOLOR_ARGB(155, 000, 000, 000));
 				//drawFilledBox(x, y, gameWindowWidth, height, D3DCOLOR_ARGB(155, 000, 000, 000));
 				drawText(0, startingPosY, COLOR_WHITE, ">>", normalSizeFont);
 				drawText(35, startingPosY, COLOR_WHITE, commands->command.c_str(), normalSizeFont);
 
-				startingPosY -= 12;
+				startingPosY -= 12.0;
 				std::vector<std::string>::iterator it;
 				int i = 0;
 				for (it = commands->prevCommands.begin(); it < commands->prevCommands.end(); it++, i++) {
@@ -498,7 +528,8 @@ int WINAPI XLiveRender()
 			}
 			DWORD GameGlobals = *(DWORD*)((BYTE*)h2mod->GetBase() + ((h2mod->Server) ? 0x4CB520 : 0x482D3C));
 			DWORD& GameEngine = *(DWORD*)(GameGlobals + 0x8);
-			if (GameEngine == 3 || StatusCheater) {
+			bool paused_or_in_menus = *((BYTE*)h2mod->GetBase() + 0x47A568) != 0;
+			if (GameEngine == 3 || StatusCheater || (GameEngine != 3 && paused_or_in_menus)) {
 				drawText(0, 0, COLOR_WHITE, BuildText, smallFont);
 				if (MasterState == 0)
 					drawText(0, 15, COLOR_WHITE, ServerStatus, smallFont);
@@ -517,7 +548,12 @@ int WINAPI XLiveRender()
 				
 				if (it->second == false)
 				{
+					std::unique_lock<std::mutex> lck(h2mod->sound_mutex);
+
 					h2mod->SoundMap[L"sounds/AchievementUnlocked.wav"] = 0;
+
+					h2mod->sound_cv.notify_one();
+
 					it->second = true;
 				}
 				
@@ -578,10 +614,50 @@ int WINAPI XLiveRender()
 			}
 #pragma endregion achievement rendering
 
-			/* TODO: turn on again after converting map downloading to use lib curl
-			if (overrideUnicodeMessage && getCustomLobbyMessage() != NULL) {
-				drawText(0, 30, COLOR_GOLD, getCustomLobbyMessage(), normalSizeFont);
-			}*/
+			if (GameEngine == 3 && mapManager->getCustomLobbyMessage() != NULL) {
+				drawText(0, 30, COLOR_GOLD, mapManager->getCustomLobbyMessage(), normalSizeFont);
+			}
+
+			time_t ltime;
+			time(&ltime);//seconds since epoch.
+			unsigned long time = (unsigned long)ltime;
+
+			int diff;
+			if (time_end && (diff = time_end - time) != time_sec) {
+				time_sec = diff;
+				int time_min = time_sec / 60;
+				snprintf(exit_countdown_timer_label, 10, "%02d:%02d", time_min, time_sec % 60);
+				if (time_sec <= 0) {
+					BYTE& Quit_Exit_Game = *((BYTE*)h2mod->GetBase() + 0x48220b);
+					Quit_Exit_Game = 1;
+				}
+				if (++add_exit_countdown_label >= 4) {
+					add_exit_countdown_label = 0;
+					create_exit_countdown_label();
+				}
+			}
+
+			int width = pViewport.Width;
+			int height = pViewport.Height;
+
+			for (auto const &ent1 : exit_countdown_labels) {
+				ent1->x += ent1->xp ? 1 : -1;
+				ent1->y += ent1->yp ? 1 : -1;
+				if (ent1->x > width) {
+					ent1->xp = false;
+				}
+				else if (ent1->x < 0) {
+					ent1->xp = true;
+				}
+				if (ent1->y > height) {
+					ent1->yp = false;
+				}
+				else if (ent1->y < 0) {
+					ent1->yp = true;
+				}
+				drawText(ent1->x - 25, ent1->y - 10, COLOR_WHITE, exit_countdown_timer_label, normalSizeFont);
+			}
+			
 			if (getDebugTextDisplay()) {
 				for (int i = 0; i < getDebugTextArrayMaxLen(); i++) {
 					const char* text = getDebugText(i);
@@ -595,6 +671,17 @@ int WINAPI XLiveRender()
 					}
 				}
 			}
+
+			if (Auto_Update_Text) {
+				drawText(10, 60, COLOR_WHITE, Auto_Update_Text, normalSizeFont);
+			}
+			extern long long Size_Of_Download;
+			extern long long Size_Of_Downloaded;
+			if (Size_Of_Download > 0) {
+				drawBox(10, 52, 200, 6, COLOR_RED, COLOR_RED);
+				drawBox(10, 52, ((Size_Of_Downloaded * 100) / Size_Of_Download) * 2, 6, COLOR_GREEN, COLOR_GREEN);
+			}
+
 		}
 
 		if (H2Config_fps_limit > 0) {

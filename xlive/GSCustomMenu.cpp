@@ -10,7 +10,8 @@
 #include "GSAccountLogin.h"
 #include "GSAccountCreate.h"
 #include "CUser.h"
-#include "H2MOD.h"
+#include "H2Tweaks.h"
+#include "GSDownload.h"
 
 extern DWORD H2BaseAddr;
 extern bool H2IsDediServer;
@@ -1233,19 +1234,19 @@ const int CMLabelMenuId_EditCrosshair = 0xFF000010;
 #pragma region CM_EditCrosshair
 
 static void loadLabelCrosshairOffset() {
-	if (H2Config_crosshair_offset) {
+	if (!FloatIsNaN(H2Config_crosshair_offset)) {
 		char* lblFpsLimitNum = H2CustomLanguageGetLabel(CMLabelMenuId_EditCrosshair, 0xFFFF0003);
 		if (!lblFpsLimitNum)
 			return;
 		int buildLimitLabelLen = strlen(lblFpsLimitNum) + 20;
 		char* buildLimitLabel = (char*)malloc(sizeof(char) * buildLimitLabelLen);
 		snprintf(buildLimitLabel, buildLimitLabelLen, lblFpsLimitNum, H2Config_crosshair_offset);
-		add_cartographer_label(CMLabelMenuId_EditCrosshair, 3, buildLimitLabel);
+		add_cartographer_label(CMLabelMenuId_EditCrosshair, 3, buildLimitLabel, true);
 		free(buildLimitLabel);
 	}
 	else {
 		char* lblFpsLimitDisabled = H2CustomLanguageGetLabel(CMLabelMenuId_EditCrosshair, 0xFFFF0013);
-		add_cartographer_label(CMLabelMenuId_EditCrosshair, 3, lblFpsLimitDisabled);
+		add_cartographer_label(CMLabelMenuId_EditCrosshair, 3, lblFpsLimitDisabled, true);
 	}
 }
 
@@ -1290,35 +1291,43 @@ __declspec(naked) void sub_2111ab_CMLTD_nak_EditCrosshair() {//__thiscall
 }
 
 static bool CMButtonHandler_EditCrosshair(int button_id) {
-	const int upper_limit = 110.0f;
+	const float upper_limit = 0.53f;
+	const float major_inc = 0.02f;
+	const float minor_inc = 0.001f;
 	if (button_id == 0) {
-		if (H2Config_crosshair_offset <= upper_limit - 1.0f)
-			H2Config_crosshair_offset += 1.0f;
+		if (H2Config_crosshair_offset <= upper_limit - major_inc)
+			H2Config_crosshair_offset += major_inc;
 		else
 			H2Config_crosshair_offset = upper_limit;
 	}
 	else if (button_id == 1) {
-		if (H2Config_crosshair_offset < upper_limit)
-			H2Config_crosshair_offset += 0.01f;
+		if (H2Config_crosshair_offset <= upper_limit - minor_inc)
+			H2Config_crosshair_offset += minor_inc;
+		else
+			H2Config_crosshair_offset = upper_limit;
 	}
 	else if (button_id == 3) {
-		//if (H2Config_crosshair_offset > 0.0f)
-			H2Config_crosshair_offset -= 0.01f;
-	}
-	else if (button_id == 4) {
-		//if (H2Config_crosshair_offset > 1.0f)
-			H2Config_crosshair_offset -= 1.0f;
-		//else
-		//	H2Config_crosshair_offset = NAN;
-	}
-	else if (button_id == 2) {
-		if (H2Config_crosshair_offset == 0.0f)
-			H2Config_crosshair_offset = NAN;
+		if (H2Config_crosshair_offset > 0.0f + minor_inc)
+			H2Config_crosshair_offset -= minor_inc;
 		else
 			H2Config_crosshair_offset = 0.0f;
 	}
+	else if (button_id == 4) {
+		if (H2Config_crosshair_offset > 0.0f + major_inc)
+			H2Config_crosshair_offset -= major_inc;
+		else
+			H2Config_crosshair_offset = 0.0f;
+	}
+	else if (button_id == 2) {
+		if (FloatIsNaN(H2Config_crosshair_offset))
+			H2Config_crosshair_offset = 0.165f;
+		else {
+			H2Config_crosshair_offset = NAN;
+			H2Tweaks::setCrosshairPos(0.165f);
+		}
+	}
 	loadLabelCrosshairOffset();
-	AlterCrosshairOffset();
+	H2Tweaks::setCrosshairPos(H2Config_crosshair_offset);
 	return false;
 }
 
@@ -1381,12 +1390,12 @@ static void loadLabelFOVNum() {
 		int buildLimitLabelLen = strlen(lblFpsLimitNum) + 20;
 		char* buildLimitLabel = (char*)malloc(sizeof(char) * buildLimitLabelLen);
 		snprintf(buildLimitLabel, buildLimitLabelLen, lblFpsLimitNum, H2Config_field_of_view);
-		add_cartographer_label(CMLabelMenuId_EditFOV, 3, buildLimitLabel);
+		add_cartographer_label(CMLabelMenuId_EditFOV, 3, buildLimitLabel, true);
 		free(buildLimitLabel);
 	}
 	else {
 		char* lblFpsLimitDisabled = H2CustomLanguageGetLabel(CMLabelMenuId_EditFOV, 0xFFFF0013);
-		add_cartographer_label(CMLabelMenuId_EditFOV, 3, lblFpsLimitDisabled);
+		add_cartographer_label(CMLabelMenuId_EditFOV, 3, lblFpsLimitDisabled, true);
 	}
 }
 
@@ -1459,7 +1468,7 @@ static bool CMButtonHandler_EditFOV(int button_id) {
 			H2Config_field_of_view = 100;
 	}
 	loadLabelFOVNum();
-	Field_of_View(H2Config_field_of_view);
+	H2Tweaks::setFOV(H2Config_field_of_view);
 	return false;
 }
 
@@ -1522,12 +1531,12 @@ static void loadLabelFPSLimit() {
 		int buildLimitLabelLen = strlen(lblFpsLimitNum) + 20;
 		char* buildLimitLabel = (char*)malloc(sizeof(char) * buildLimitLabelLen);
 		snprintf(buildLimitLabel, buildLimitLabelLen, lblFpsLimitNum, H2Config_fps_limit);
-		add_cartographer_label(CMLabelMenuId_EditFPS, 3, buildLimitLabel);
+		add_cartographer_label(CMLabelMenuId_EditFPS, 3, buildLimitLabel, true);
 		free(buildLimitLabel);
 	}
 	else {
 		char* lblFpsLimitDisabled = H2CustomLanguageGetLabel(CMLabelMenuId_EditFPS, 0xFFFF0013);
-		add_cartographer_label(CMLabelMenuId_EditFPS, 3, lblFpsLimitDisabled);
+		add_cartographer_label(CMLabelMenuId_EditFPS, 3, lblFpsLimitDisabled, true);
 	}
 }
 
@@ -1594,6 +1603,8 @@ static bool CMButtonHandler_EditFPS(int button_id) {
 		else
 			H2Config_fps_limit = 60;
 	}
+	extern float desiredRenderTime;
+	desiredRenderTime = (1000.f / H2Config_fps_limit);
 	loadLabelFPSLimit();
 	return false;
 }
@@ -1646,6 +1657,411 @@ void GSCustomMenuCall_EditFPS() {
 #pragma endregion
 
 
+const int CMLabelMenuId_Update = 0xFF000011;
+#pragma region CM_Update
+
+static bool force_keep_open_Update = false;
+
+void __stdcall CMLabelButtons_Update(int a1, int a2)
+{
+	int(__thiscall* sub_211909)(int, int, int, int) = (int(__thiscall*)(int, int, int, int))((char*)H2BaseAddr + 0x211909);
+	void(__thiscall* sub_21bf85)(int, int label_id) = (void(__thiscall*)(int, int))((char*)H2BaseAddr + 0x21bf85);
+
+	__int16 button_id = *(WORD*)(a1 + 112);
+	int v3 = sub_211909(a1, 6, 0, 0);
+	if (v3)
+	{
+		sub_21bf85_CMLTD(v3, button_id + 1, CMLabelMenuId_Update);
+	}
+}
+
+__declspec(naked) void sub_2111ab_CMLTD_nak_Update() {//__thiscall
+	__asm {
+		mov eax, [esp + 4h]
+
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push 0xFFFFFFF1//label_id_description
+		push 0xFFFFFFF0//label_id_title
+		push CMLabelMenuId_Update
+		push eax
+		push ecx
+		call sub_2111ab_CMLTD//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn 4
+	}
+}
+
+static bool CMButtonHandler_Update(int button_id) {
+
+	if (button_id == 0) {
+		GSDownloadCheck();
+	}
+	else if (button_id == 1 && GSDownload_files_to_download) {
+		GSDownloadDL();
+	}
+	else if (button_id == 2 && GSDownload_files_to_install) {
+		GSDownloadInstall();
+	}
+	else if (button_id == 3) {
+		GSDownloadCancel();
+		force_keep_open_Update = false;
+		return true;
+	}
+	return false;
+}
+
+__declspec(naked) void sub_20F790_CM_nak_Update() {//__thiscall
+	__asm {
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push 0//selected button id
+		push ecx
+		call sub_20F790_CM//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn
+	}
+}
+
+void GSCustomMenuCall_Update();
+
+void* __stdcall sub_248beb_deconstructor_Update(LPVOID lpMem, char a2)//__thiscall
+{
+	if (force_keep_open_Update) {
+		GSCustomMenuCall_Update();
+	}
+
+	int(__thiscall* sub_248b90)(void*) = (int(__thiscall*)(void*))((char*)H2BaseAddr + 0x248b90);
+	int(__cdecl* sub_287c23)(void*) = (int(__cdecl*)(void*))((char*)H2BaseAddr + 0x287c23);
+
+	sub_248b90((void*)lpMem);
+	if (a2 & 1) {
+		sub_287c23((void*)lpMem);
+	}
+	return (void*)lpMem;
+}
+
+__declspec(naked) void sub_248beb_nak_deconstructor_Update() {//__thiscall
+	__asm {
+		mov  eax, [esp + 4h]
+
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push eax
+		push ecx
+		call sub_248beb_deconstructor_Update//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn 4
+	}
+}
+
+int CustomMenu_Update(int);
+
+int(__cdecl *CustomMenuFuncPtrHelp_Update())(int) {
+	return CustomMenu_Update;
+}
+
+DWORD* menu_vftable_1_Update = 0;
+DWORD* menu_vftable_2_Update = 0;
+
+void CMSetupVFTables_Update() {
+	CMSetupVFTables(&menu_vftable_1_Update, &menu_vftable_2_Update, (DWORD)CMLabelButtons_Update, (DWORD)sub_2111ab_CMLTD_nak_Update, (DWORD)CustomMenuFuncPtrHelp_Update, (DWORD)sub_20F790_CM_nak_Update, true, (DWORD)sub_248beb_nak_deconstructor_Update);
+}
+
+int CustomMenu_Update(int a1) {
+	force_keep_open_Update = true;
+	GSDownloadInit();
+	return CustomMenu_CallHead(a1, menu_vftable_1_Update, menu_vftable_2_Update, (DWORD)&CMButtonHandler_Update, 4, 272);
+}
+
+void GSCustomMenuCall_Update() {
+	int WgitScreenfunctionPtr = (int)(CustomMenu_Update);
+	CallWgit(WgitScreenfunctionPtr);
+}
+
+#pragma endregion
+
+
+const int CMLabelMenuId_Update_Note = 0xFF000012;
+#pragma region CM_Update_Note
+
+void __stdcall CMLabelButtons_Update_Note(int a1, int a2)
+{
+	int(__thiscall* sub_211909)(int, int, int, int) = (int(__thiscall*)(int, int, int, int))((char*)H2BaseAddr + 0x211909);
+	void(__thiscall* sub_21bf85)(int, int label_id) = (void(__thiscall*)(int, int))((char*)H2BaseAddr + 0x21bf85);
+
+	__int16 button_id = *(WORD*)(a1 + 112);
+	int v3 = sub_211909(a1, 6, 0, 0);
+	if (v3)
+	{
+		sub_21bf85_CMLTD(v3, button_id + 1, CMLabelMenuId_Update_Note);
+	}
+}
+
+__declspec(naked) void sub_2111ab_CMLTD_nak_Update_Note() {//__thiscall
+	__asm {
+		mov eax, [esp + 4h]
+
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push 0xFFFFFFF1//label_id_description
+		push 0xFFFFFFF0//label_id_title
+		push CMLabelMenuId_Update_Note
+		push eax
+		push ecx
+		call sub_2111ab_CMLTD//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn 4
+	}
+}
+
+static bool CMButtonHandler_Update_Note(int button_id) {
+
+	if (button_id == 0) {
+		GSCustomMenuCall_Update();
+	}
+	return true;
+}
+
+__declspec(naked) void sub_20F790_CM_nak_Update_Note() {//__thiscall
+	__asm {
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push 0//selected button id
+		push ecx
+		call sub_20F790_CM//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn
+	}
+}
+
+int CustomMenu_Update_Note(int);
+
+int(__cdecl *CustomMenuFuncPtrHelp_Update_Note())(int) {
+	return CustomMenu_Update_Note;
+}
+
+DWORD* menu_vftable_1_Update_Note = 0;
+DWORD* menu_vftable_2_Update_Note = 0;
+
+void CMSetupVFTables_Update_Note() {
+	CMSetupVFTables(&menu_vftable_1_Update_Note, &menu_vftable_2_Update_Note, (DWORD)CMLabelButtons_Update_Note, (DWORD)sub_2111ab_CMLTD_nak_Update_Note, (DWORD)CustomMenuFuncPtrHelp_Update_Note, (DWORD)sub_20F790_CM_nak_Update_Note, true, 0);
+}
+
+int CustomMenu_Update_Note(int a1) {
+	return CustomMenu_CallHead(a1, menu_vftable_1_Update_Note, menu_vftable_2_Update_Note, (DWORD)&CMButtonHandler_Update_Note, 2, 272);
+}
+
+void GSCustomMenuCall_Update_Note() {
+	if (!H2IsDediServer) {
+		int WgitScreenfunctionPtr = (int)(CustomMenu_Update_Note);
+		CallWgit(WgitScreenfunctionPtr);
+	}
+	char* lblTitle = H2CustomLanguageGetLabel(CMLabelMenuId_Error, 0xFFFFF004);
+	char* lblDesc = H2CustomLanguageGetLabel(CMLabelMenuId_Error, 0xFFFFF005);
+	if (!lblTitle || !lblDesc) {
+		if (lblTitle)
+			addDebugText(lblTitle);
+		if (lblDesc)
+			addDebugText(lblDesc);
+	}
+	else {
+		int debugTextBuflen = (strlen(lblTitle) + strlen(lblDesc) + 6) * sizeof(char);
+		char* debugText = (char*)malloc(debugTextBuflen);
+		snprintf(debugText, debugTextBuflen, "%s - %s", lblTitle, lblDesc);
+		addDebugText(debugText);
+		free(debugText);
+	}
+}
+
+#pragma endregion
+
+
+const int CMLabelMenuId_Login_Warn = 0xFF000013;
+#pragma region CM_Login_Warn
+
+void __stdcall CMLabelButtons_Login_Warn(int a1, int a2)
+{
+	int(__thiscall* sub_211909)(int, int, int, int) = (int(__thiscall*)(int, int, int, int))((char*)H2BaseAddr + 0x211909);
+	void(__thiscall* sub_21bf85)(int, int label_id) = (void(__thiscall*)(int, int))((char*)H2BaseAddr + 0x21bf85);
+
+	__int16 button_id = *(WORD*)(a1 + 112);
+	int v3 = sub_211909(a1, 6, 0, 0);
+	if (v3)
+	{
+		sub_21bf85_CMLTD(v3, button_id + 1, CMLabelMenuId_Login_Warn);
+	}
+}
+
+__declspec(naked) void sub_2111ab_CMLTD_nak_Login_Warn() {//__thiscall
+	__asm {
+		mov eax, [esp + 4h]
+
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push 0xFFFFFFF1//label_id_description
+		push 0xFFFFFFF0//label_id_title
+		push CMLabelMenuId_Login_Warn
+		push eax
+		push ecx
+		call sub_2111ab_CMLTD//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn 4
+	}
+}
+
+static bool CMButtonHandler_Login_Warn(int button_id) {
+	return true;
+}
+
+__declspec(naked) void sub_20F790_CM_nak_Login_Warn() {//__thiscall
+	__asm {
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push 0//selected button id
+		push ecx
+		call sub_20F790_CM//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn
+	}
+}
+
+
+void* __stdcall sub_248beb_deconstructor_Login_Warn(LPVOID lpMem, char a2)//__thiscall
+{
+	//show select profile gui
+	int(__cdecl* sub_209236)(int) = (int(__cdecl*)(int))((char*)H2BaseAddr + 0x209236);
+	sub_209236(0);
+
+	int(__thiscall* sub_248b90)(void*) = (int(__thiscall*)(void*))((char*)H2BaseAddr + 0x248b90);
+	int(__cdecl* sub_287c23)(void*) = (int(__cdecl*)(void*))((char*)H2BaseAddr + 0x287c23);
+
+	sub_248b90((void*)lpMem);
+	if (a2 & 1) {
+		sub_287c23((void*)lpMem);
+	}
+	return (void*)lpMem;
+}
+
+__declspec(naked) void sub_248beb_nak_deconstructor_Login_Warn() {//__thiscall
+	__asm {
+		mov  eax, [esp + 4h]
+
+		push ebp
+		push edi
+		push esi
+		push ecx
+		push ebx
+
+		push eax
+		push ecx
+		call sub_248beb_deconstructor_Login_Warn//__stdcall
+
+		pop ebx
+		pop ecx
+		pop esi
+		pop edi
+		pop ebp
+
+		retn 4
+	}
+}
+
+int CustomMenu_Login_Warn(int);
+
+int(__cdecl *CustomMenuFuncPtrHelp_Login_Warn())(int) {
+	return CustomMenu_Login_Warn;
+}
+
+DWORD* menu_vftable_1_Login_Warn = 0;
+DWORD* menu_vftable_2_Login_Warn = 0;
+
+void CMSetupVFTables_Login_Warn() {
+	CMSetupVFTables(&menu_vftable_1_Login_Warn, &menu_vftable_2_Login_Warn, (DWORD)CMLabelButtons_Login_Warn, (DWORD)sub_2111ab_CMLTD_nak_Login_Warn, (DWORD)CustomMenuFuncPtrHelp_Login_Warn, (DWORD)sub_20F790_CM_nak_Login_Warn, true, (DWORD)sub_248beb_nak_deconstructor_Login_Warn);
+}
+
+int CustomMenu_Login_Warn(int a1) {
+	return CustomMenu_CallHead(a1, menu_vftable_1_Login_Warn, menu_vftable_2_Login_Warn, (DWORD)&CMButtonHandler_Login_Warn, 0, 272);
+}
+
+void GSCustomMenuCall_Login_Warn() {
+	int WgitScreenfunctionPtr = (int)(CustomMenu_Login_Warn);
+	CallWgit(WgitScreenfunctionPtr);
+}
+
+#pragma endregion
+
+
 
 #pragma region Setting_Modifications
 
@@ -1662,7 +2078,7 @@ char __cdecl sub_BD114_blind_hud(unsigned int a1)//render hud
 {
 	DWORD PlayerGlobalBase = (DWORD)0x30004B60;
 	bool& IsPlayerDead = (bool&)*(BYTE*)(PlayerGlobalBase + 4);
-	if (!blind_fp && IsPlayerDead) {//fixes game notification text from glitching out
+	if (IsPlayerDead) {//fixes game notification text from glitching out
 		return 0;
 	}
 	char result = blind_hud ? 1 : 0;
@@ -1682,43 +2098,46 @@ void RefreshToggleIngameKeyboardControls() {
 	if (H2Config_disable_ingame_keyboard) {
 		//Allows to repeat last movement when lose focus in mp, unlocks METHOD E from point after intro vid
 		BYTE getFocusB[] = { 0x00 };
-		WriteBytesASM(H2BaseAddr + 0x2E3C5, getFocusB, 1);
+		WriteBytes(H2BaseAddr + 0x2E3C5, getFocusB, 1);
 		//Allows input when not in focus.
 		BYTE getFocusE[] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
-		WriteBytesASM(H2BaseAddr + 0x2F9EA, getFocusE, 6);
-		WriteBytesASM(H2BaseAddr + 0x2F9FC, getFocusE, 6);
-		WriteBytesASM(H2BaseAddr + 0x2FA09, getFocusE, 6);
+		WriteBytes(H2BaseAddr + 0x2F9EA, getFocusE, 6);
+		WriteBytes(H2BaseAddr + 0x2F9FC, getFocusE, 6);
+		WriteBytes(H2BaseAddr + 0x2FA09, getFocusE, 6);
 		//Disables the keyboard only when in-game and not in a menu.
 		BYTE disableKeyboard1[] = { 0x90, 0x90, 0x90 };
-		WriteBytesASM(H2BaseAddr + 0x2FA8A, disableKeyboard1, 3);
+		WriteBytes(H2BaseAddr + 0x2FA8A, disableKeyboard1, 3);
 		BYTE disableKeyboard2[] = { 0x00 };
-		WriteBytesASM(H2BaseAddr + 0x2FA92, disableKeyboard2, 1);
+		WriteBytes(H2BaseAddr + 0x2FA92, disableKeyboard2, 1);
 		BYTE disableKeyboard3[] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
-		WriteBytesASM(H2BaseAddr + 0x2FA67, disableKeyboard3, 6);
+		WriteBytes(H2BaseAddr + 0x2FA67, disableKeyboard3, 6);
 	}
 	else {
 		//Reset them all back.
 		BYTE getFocusB[] = { 0x01 };
-		WriteBytesASM(H2BaseAddr + 0x2E3C5, getFocusB, 1);
+		WriteBytes(H2BaseAddr + 0x2E3C5, getFocusB, 1);
 		
 		BYTE getFocusE[] = { 0x0F, 0x85, 0x02, 0x02, 0x00, 0x00 };
-		WriteBytesASM(H2BaseAddr + 0x2F9EA, getFocusE, 6);
+		WriteBytes(H2BaseAddr + 0x2F9EA, getFocusE, 6);
 		getFocusE[2] = 0xF0;
 		getFocusE[3] = 0x01;
-		WriteBytesASM(H2BaseAddr + 0x2F9FC, getFocusE, 6);
+		WriteBytes(H2BaseAddr + 0x2F9FC, getFocusE, 6);
 		getFocusE[2] = 0xE3;
-		WriteBytesASM(H2BaseAddr + 0x2FA09, getFocusE, 6);
+		WriteBytes(H2BaseAddr + 0x2FA09, getFocusE, 6);
 		
 		BYTE disableKeyboard1[] = { 0x56, 0xFF, 0xD3 };
-		WriteBytesASM(H2BaseAddr + 0x2FA8A, disableKeyboard1, 3);
+		WriteBytes(H2BaseAddr + 0x2FA8A, disableKeyboard1, 3);
 		BYTE disableKeyboard2[] = { 0x01 };
-		WriteBytesASM(H2BaseAddr + 0x2FA92, disableKeyboard2, 1);
-		WriteBytesASM(H2BaseAddr + 0x2FA67, enableKeyboard3, 6);
+		WriteBytes(H2BaseAddr + 0x2FA92, disableKeyboard2, 1);
+		WriteBytes(H2BaseAddr + 0x2FA67, enableKeyboard3, 6);
 	}
 }
 
 //Reversed from Rainman/Cloud's tool (Credit to him for original hack).
 void RefreshToggleDisableControllerAimAssist() {
+	//FIXME: Causes the vertical lift on The Armory to kill you and launch Sergeant Johnson.
+	//Probably other weird glitches too.
+	return;
 
 	if (H2IsDediServer)
 		return;
@@ -1797,6 +2216,13 @@ void RefreshToggleDisableControllerAimAssist() {
 	}
 }
 
+void RefreshTogglexDelay() {
+	BYTE xDelayJMP[] = { 0x74 };
+	if (!H2Config_xDelay)
+		xDelayJMP[0] = 0xEB;
+	WriteBytes(H2BaseAddr + (H2IsDediServer ? 0x1a1316 : 0x1c9d8e), xDelayJMP, 1);
+}
+
 #pragma endregion
 
 
@@ -1853,8 +2279,7 @@ static bool CMButtonHandler_EditHudGui(int button_id) {
 		GSCustomMenuCall_EditFOV();
 	}
 	else if (button_id == 1) {
-		//GSCustomMenuCall_EditCrosshair();
-		GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0x8, 0x9);
+		GSCustomMenuCall_EditCrosshair();
 	}
 	else if (button_id == 2) {
 		loadLabelToggle_EditHudGui(button_id + 1, 0xFFFFFFF4, !(H2Config_hide_ingame_chat = !H2Config_hide_ingame_chat));
@@ -2051,8 +2476,8 @@ DWORD* menu_vftable_1_ToggleSkulls = 0;
 DWORD* menu_vftable_2_ToggleSkulls = 0;
 
 void CMSetupVFTables_ToggleSkulls() {
-	PatchCall(H2BaseAddr + 0x228579, (DWORD)sub_BD114_blind_fp);
-	PatchCall(H2BaseAddr + 0x223955, (DWORD)sub_BD114_blind_hud);
+	PatchCall(H2BaseAddr + 0x228579, sub_BD114_blind_fp);
+	PatchCall(H2BaseAddr + 0x223955, sub_BD114_blind_hud);
 
 	CMSetupVFTables(&menu_vftable_1_ToggleSkulls, &menu_vftable_2_ToggleSkulls, (DWORD)CMLabelButtons_ToggleSkulls, (DWORD)sub_2111ab_CMLTD_nak_ToggleSkulls, (DWORD)CustomMenuFuncPtrHelp_ToggleSkulls, (DWORD)sub_20F790_CM_nak_ToggleSkulls, true, 0);
 }
@@ -2079,7 +2504,6 @@ void GSCustomMenuCall_ToggleSkulls() {
 const int CMLabelMenuId_OtherSettings = 0xFF00000D;
 #pragma region CM_OtherSettings
 
-static bool xDelay = false;
 static bool vehicleFlipoverEject = true;
 
 static void loadLabelToggle_OtherSettings(int lblIndex, int lblTogglePrefix, bool isEnabled) {
@@ -2131,15 +2555,17 @@ static bool CMButtonHandler_OtherSettings(int button_id) {
 		GSCustomMenuCall_EditFPS();
 	}
 	else if (button_id == 1) {
-		loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF2, (H2Config_controller_aim_assist = !H2Config_controller_aim_assist));
+		GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0x8, 0x9);
+		//loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF2, (H2Config_controller_aim_assist = !H2Config_controller_aim_assist));
 		RefreshToggleDisableControllerAimAssist();
 	}
 	else if (button_id == 2) {
 		loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF2, (H2Config_discord_enable = !H2Config_discord_enable));
+		GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF02A, 0xFFFFF02B);
 	}
 	else if (button_id == 3) {
-		loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF2, (xDelay = !xDelay));
-		GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0x8, 0x9);
+		loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF2, (H2Config_xDelay = !H2Config_xDelay));
+		RefreshTogglexDelay();
 	}
 	else if (button_id == 4) {
 		loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF6, !(H2Config_skip_intro = !H2Config_skip_intro));
@@ -2150,6 +2576,7 @@ static bool CMButtonHandler_OtherSettings(int button_id) {
 	}
 	else if (button_id == 6) {
 		loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF2, (H2Config_raw_input = !H2Config_raw_input));
+		GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF02A, 0xFFFFF02B);
 	}
 	else if (button_id == 7) {
 		loadLabelToggle_OtherSettings(button_id + 1, 0xFFFFFFF2, (vehicleFlipoverEject = !vehicleFlipoverEject));
@@ -2158,7 +2585,7 @@ static bool CMButtonHandler_OtherSettings(int button_id) {
 		BYTE assmDisableVehicleFlipEject[] = { 0xEB };
 		if (vehicleFlipoverEject)
 			assmDisableVehicleFlipEject[0] = 0x7E;
-		WriteBytesASM(H2BaseAddr + 0x159e5d, assmDisableVehicleFlipEject, 1);
+		WriteBytes(H2BaseAddr + 0x159e5d, assmDisableVehicleFlipEject, 1);
 	}
 	return false;
 }
@@ -2201,7 +2628,7 @@ void CMSetupVFTables_OtherSettings() {
 int CustomMenu_OtherSettings(int a1) {
 	loadLabelToggle_OtherSettings(2, 0xFFFFFFF2, H2Config_controller_aim_assist);
 	loadLabelToggle_OtherSettings(3, 0xFFFFFFF2, H2Config_discord_enable);
-	loadLabelToggle_OtherSettings(4, 0xFFFFFFF2, xDelay);
+	loadLabelToggle_OtherSettings(4, 0xFFFFFFF2, H2Config_xDelay);
 	loadLabelToggle_OtherSettings(5, 0xFFFFFFF6, !H2Config_skip_intro);
 	loadLabelToggle_OtherSettings(6, 0xFFFFFFF2, !H2Config_disable_ingame_keyboard);
 	loadLabelToggle_OtherSettings(7, 0xFFFFFFF2, H2Config_raw_input);
@@ -2414,7 +2841,7 @@ void CMSetupVFTables_Credits() {
 }
 
 int CustomMenu_Credits(int a1) {
-	return CustomMenu_CallHead(a1, menu_vftable_1_Credits, menu_vftable_2_Credits, (DWORD)&CMButtonHandler_Credits, 14, 272);
+	return CustomMenu_CallHead(a1, menu_vftable_1_Credits, menu_vftable_2_Credits, (DWORD)&CMButtonHandler_Credits, 16, 272);
 }
 
 void GSCustomMenuCall_Credits() {
@@ -2504,6 +2931,38 @@ __declspec(naked) void sub_2111ab_CMLTD_nak_AccountCreate() {//__thiscall
 	}
 }
 
+static HANDLE hThreadCreate = 0;
+
+static DWORD WINAPI ThreadCreate(LPVOID lParam)
+{
+	//gotta delay it a little to make sure the menu's decide to render correctly.
+	Sleep(200L);
+
+	char* username = H2CustomLanguageGetLabel(CMLabelMenuId_AccountCreate, 1);
+	char* email = H2CustomLanguageGetLabel(CMLabelMenuId_AccountCreate, 2);
+	char* pass = H2CustomLanguageGetLabel(CMLabelMenuId_AccountCreate, 3);
+	//submit account creation.
+	if (HandleGuiAccountCreate(username, email, pass)) {
+		//account created.
+		//GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF026, 0xFFFFF027);
+		//verification email.
+		GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF028, 0xFFFFF029);
+
+		char* username2 = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 1);
+		snprintf(username2, strlen(username) + 1, username);
+		char* pass2 = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 2);
+		snprintf(pass2, strlen(pass) + 1, pass);
+		memset(username, 0, strlen(username));
+		memset(email, 0, strlen(email));
+		memset(pass, 0, strlen(pass));
+	}
+
+	updateAccountingActiveHandle(false);
+
+	hThreadCreate = 0;
+	return 0;
+}
+
 static bool CMButtonHandler_AccountCreate(int button_id) {
 	if (button_id == 0) {
 		char* textBuffer = H2CustomLanguageGetLabel(CMLabelMenuId_AccountCreate, 1);
@@ -2518,26 +2977,11 @@ static bool CMButtonHandler_AccountCreate(int button_id) {
 		GSCustomMenuCall_VKeyboard_Inner((wchar_t*)textBuffer, 255, 0b10000, CMLabelMenuId_AccountCreate, 0xFFFFF006, CMLabelMenuId_AccountCreate, 0xFFFFF007);
 	}
 	else if (button_id == 3) {
-		char* username = H2CustomLanguageGetLabel(CMLabelMenuId_AccountCreate, 1);
-		char* email = H2CustomLanguageGetLabel(CMLabelMenuId_AccountCreate, 2);
-		char* pass = H2CustomLanguageGetLabel(CMLabelMenuId_AccountCreate, 3);
-		//submit account creation.
-		if (HandleGuiAccountCreate(username, email, pass)) {
-			//account created.
-			//GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF026, 0xFFFFF027);
-			//verification email.
-			GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF028, 0xFFFFF029);
-
-			char* username2 = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 1);
-			snprintf(username2, strlen(username) + 1, username);
-			char* pass2 = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 2);
-			snprintf(pass2, strlen(pass) + 1, pass);
-			memset(username, 0, strlen(username));
-			memset(email, 0, strlen(email));
-			memset(pass, 0, strlen(pass));
-		}
-		else {
+		if (!hThreadCreate) {
 			accountingGoBackToList = false;
+			updateAccountingActiveHandle(true);
+			GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF02C, 0xFFFFF02D);
+			hThreadCreate = CreateThread(NULL, 0, ThreadCreate, (LPVOID)0, 0, NULL);
 		}
 	}
 	return false;
@@ -2694,6 +3138,39 @@ __declspec(naked) void sub_2111ab_CMLTD_nak_AccountEdit() {//__thiscall
 	}
 }
 
+static HANDLE hThreadLogin = 0;
+
+static DWORD WINAPI ThreadLogin(LPVOID lParam)
+{
+	int button_id = (int)lParam;
+
+	//gotta delay it a little to make sure the menu's decide to render correctly.
+	Sleep(200L);
+
+	if (button_id == -1) {
+		char* identifier = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 1);
+		char* identifier_pass = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 2);
+		//login to account
+		if (HandleGuiLogin(0, identifier, identifier_pass)) {
+			GSCustomMenuCall_Login_Warn();
+			H2AccountLastUsed = 0;
+		}
+		memset(identifier_pass, 0, strlen(identifier_pass));
+	}
+	else {
+		//login to account
+		if (HandleGuiLogin(H2AccountBufferLoginToken[button_id], 0, 0)) {
+			GSCustomMenuCall_Login_Warn();
+			H2AccountLastUsed = button_id;
+		}
+	}
+
+	updateAccountingActiveHandle(false);
+
+	hThreadLogin = 0;
+	return 0;
+}
+
 static bool CMButtonHandler_AccountEdit(int button_id) {
 	if (button_id == 0) {
 		char* textBuffer = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 1);
@@ -2708,19 +3185,12 @@ static bool CMButtonHandler_AccountEdit(int button_id) {
 		add_cartographer_label(CMLabelMenuId_AccountEdit, 3, H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 0xFFFFFFF2 + (AccountEdit_remember ? 1 : 0)), true);
 	}
 	else if (button_id == 3) {
-		char* identifier = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 1);
-		char* identifier_pass = H2CustomLanguageGetLabel(CMLabelMenuId_AccountEdit, 2);
-		//login to account
-		if (HandleGuiLogin(0, identifier, identifier_pass)) {
-			//show select profile gui
-			int(__cdecl* sub_209236)(int) = (int(__cdecl*)(int))((char*)H2BaseAddr + 0x209236);
-			sub_209236(0);
-			//SaveH2Accounts();
-		}
-		else {
+		if (!hThreadLogin) {
 			accountingGoBackToList = false;
+			updateAccountingActiveHandle(true);
+			GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF02E, 0xFFFFF02F);
+			hThreadLogin = CreateThread(NULL, 0, ThreadLogin, (LPVOID)-1, 0, NULL);
 		}
-		memset(identifier_pass, 0, strlen(identifier_pass));
 	}
 	return false;
 }
@@ -2916,13 +3386,11 @@ static bool CMButtonHandler_AccountList(int button_id) {
 			return true;
 		}
 		else {
-			//login to account
-			if (HandleGuiLogin(H2AccountBufferLoginToken[button_id], 0, 0)) {
-				//show select profile gui
-				int(__cdecl* sub_209236)(int) = (int(__cdecl*)(int))((char*)H2BaseAddr + 0x209236);
-				sub_209236(0);
-				H2AccountLastUsed = button_id;
-				//SaveH2Accounts();
+			if (!hThreadLogin) {
+				accountingGoBackToList = false;
+				updateAccountingActiveHandle(true);
+				GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF02E, 0xFFFFF02F);
+				hThreadLogin = CreateThread(NULL, 0, ThreadLogin, (LPVOID)button_id, 0, NULL);
 			}
 		}
 	}
@@ -2933,7 +3401,6 @@ static bool CMButtonHandler_AccountList(int button_id) {
 				//show select profile gui
 				int(__cdecl* sub_209236)(int) = (int(__cdecl*)(int))((char*)H2BaseAddr + 0x209236);
 				sub_209236(0);
-				//SaveH2Accounts();
 				H2Config_master_ip = inet_addr("127.0.0.1");
 				H2Config_master_port_relay = 2001;
 				extern int MasterState;
@@ -3086,6 +3553,9 @@ static bool CMButtonHandler_Guide(int button_id) {
 	else if (button_id == 2) {
 		GSCustomMenuCall_Credits();
 	}
+	else if (button_id == 3) {
+		GSCustomMenuCall_Update();
+	}
 	return false;
 }
 
@@ -3128,11 +3598,11 @@ int CustomMenu_Guide(int a1) {
 	char* guide_desc_base = H2CustomLanguageGetLabel(CMLabelMenuId_Guide, 0xFFFFFFF2);
 	char* guide_description = (char*)malloc(strlen(guide_desc_base) + 50);
 	char hotkeyname[20];
-	GetVKeyCodeString(0x24, hotkeyname, 20);
-	sprintf(guide_description, guide_desc_base, hotkeyname);//TODO
-	add_cartographer_label(CMLabelMenuId_Guide, 0xFFFFFFF1, guide_description);
+	GetVKeyCodeString(H2Config_hotkeyIdGuide, hotkeyname, 20);
+	sprintf(guide_description, guide_desc_base, hotkeyname);
+	add_cartographer_label(CMLabelMenuId_Guide, 0xFFFFFFF1, guide_description, true);
 	free(guide_description);
-	return CustomMenu_CallHead(a1, menu_vftable_1_Guide, menu_vftable_2_Guide, (DWORD)&CMButtonHandler_Guide, 3, 272);
+	return CustomMenu_CallHead(a1, menu_vftable_1_Guide, menu_vftable_2_Guide, (DWORD)&CMButtonHandler_Guide, 4, 272);
 }
 
 void GSCustomMenuCall_Guide() {
@@ -3395,7 +3865,7 @@ void setupSomeTests() {
 
 	memcpy(func_array, func_array2, 16 * sizeof(int*));
 
-	DWORD dwBack;
+	//DWORD dwBack;
 
 	//psub_20C226 = (tsub_20C226)DetourClassFunc((BYTE*)H2BaseAddr + 0x20C226, (BYTE*)sub_20C226, 9);
 	//VirtualProtect(psub_20C226, 4, PAGE_EXECUTE_READWRITE, &dwBack);
@@ -3472,51 +3942,20 @@ void* __stdcall sub_23BC45(void* thisptr)//__thiscall
 }
 
 int __cdecl sub_209236(int a1) {
-	//char NotificationPlayerText[40];
-	//sprintf(NotificationPlayerText, "sub_209236: %d", a1);
-	//addDebugText(NotificationPlayerText);
-	if (ReadH2Accounts()) {
-		GSCustomMenuCall_AccountList();
+	extern CUserManagement User;
+	if (User.LocalUserLoggedIn()) {
+		int(__cdecl* sub_209236)(int) = (int(__cdecl*)(int))((char*)H2BaseAddr + 0x209236);
+		sub_209236(0);
 	}
 	else {
-		GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF016, 0xFFFFF017);
+		if (!isAccountingActiveHandle() && ReadH2Accounts()) {
+			GSCustomMenuCall_AccountList();
+		}
+		else {
+			GSCustomMenuCall_Error_Inner(CMLabelMenuId_Error, 0xFFFFF016, 0xFFFFF017);
+		}
 	}
 	return 0;
-}
-
-typedef void(__cdecl *tsub_20CE70)(int);
-tsub_20CE70 psub_20CE70;
-void __cdecl sub_20CE70(int option)
-{
-	//char NotificationPlayerText[40];
-	//sprintf(NotificationPlayerText, "sub_20CE70: %d", option);
-	//addDebugText(NotificationPlayerText);
-	if (option == 2 || option == 8)//doesn't work well
-	{
-		extern CUserManagement User;
-		if (User.LocalUserLoggedIn()) {
-			User.UnregisterLocal();
-		}
-	}
-	return psub_20CE70(option);
-}
-
-typedef int(__stdcall *tsub_20d68e)(void*, int, WORD*);
-tsub_20d68e psub_20d68e;
-int __stdcall sub_20d68e(void* thisptr, int a2, WORD* btnId)
-{
-	if (*btnId == 0) {
-		DWORD GameGlobals = *(DWORD*)((BYTE*)H2BaseAddr + (H2IsDediServer ? 0x4CB520 : 0x482D3C));
-		DWORD& GameEngine = *(DWORD*)(GameGlobals + 0x8);
-		if (GameEngine == 3)
-		{
-			extern CUserManagement User;
-			if (User.LocalUserLoggedIn()) {
-				User.UnregisterLocal();
-			}
-		}
-	}
-	return psub_20d68e(thisptr, a2, btnId);
 }
 
 typedef int(__cdecl *tsub_23f6b7)(int);
@@ -3546,8 +3985,87 @@ char __cdecl sub_209129(int a1, int a2, int a3, int a4)//player configuration pr
 	return result;
 }
 
-void initGSCustomMenu() {
 
+#pragma region Obscure_Menus
+
+static bool CMButtonHandler_Obscure(int button_id) {
+	return false;
+}
+
+DWORD* menu_vftable_1_Obscure = 0;
+DWORD* menu_vftable_2_Obscure = 0;
+
+void CMSetupVFTables_Obscure() {
+	CMSetupVFTables(&menu_vftable_1_Obscure, &menu_vftable_2_Obscure, 0, 0, 0, 0, false, 0);
+}
+
+int Obscure_wgit_id = 30;
+
+int CustomMenu_Obscure(int a1) {
+	return CustomMenu_CallHead(a1, menu_vftable_1_Obscure, menu_vftable_2_Obscure, (DWORD)&CMButtonHandler_Obscure, 14, Obscure_wgit_id);
+}
+
+void GSCustomMenuCall_Obscure() {
+	int WgitScreenfunctionPtr = (int)(CustomMenu_Obscure);
+	CallWgit(WgitScreenfunctionPtr);
+}
+
+
+#pragma endregion
+
+
+typedef void(__cdecl *tsub_bd137)(unsigned int);
+tsub_bd137 psub_bd137;
+void __cdecl sub_bd137(unsigned int skull_id) {
+	//psub_bd137(skull_id);
+
+	BYTE*(*sub_22CE83)() = (BYTE*(*)())((BYTE*)H2BaseAddr + 0x22CE83);
+	signed int(*sub_5343F)() = (signed int(*)())((BYTE*)H2BaseAddr + 0x5343F);
+	int(__cdecl* sub_22DEA4)(int, int) = (int(__cdecl*)(int, int))((BYTE*)H2BaseAddr + 0x22DEA4);
+	DWORD(__cdecl* sub_A402C)(float, float, float, __int16) = (DWORD(__cdecl*)(float, float, float, __int16))((BYTE*)H2BaseAddr + 0xA402C);
+	DWORD(__cdecl* sub_8836C)(DWORD, float) = (DWORD(__cdecl*)(DWORD, float))((BYTE*)H2BaseAddr + 0x8836C);
+
+	BYTE* byte_4D8320 = (BYTE*)((char*)H2BaseAddr + 0x4D8320);
+	DWORD* dword_3BCAF8 = (DWORD*)((char*)H2BaseAddr + 0x3BCAF8);
+	DWORD& dword_479E70 = *(DWORD*)((char*)H2BaseAddr + 0x479E70);
+	DWORD& dword_482290 = *(DWORD*)((char*)H2BaseAddr + 0x482290);
+
+	int v1; // ST0C_4
+	int v2; // eax
+	int v3; // eax
+	int v4; // ecx
+	unsigned int v5; // ecx
+
+	bool skull_activated = false;
+
+	if (skull_id == 0x6) {
+		skull_activated = blind_fp = blind_hud = true;
+	}
+	else if (skull_id <= 0xE && !byte_4D8320[skull_id]) {
+		byte_4D8320[skull_id] = 1;
+		skull_activated = true;
+	}
+
+	if (skull_activated) {
+		sub_22CE83();
+		v1 = dword_3BCAF8[skull_id];
+		v2 = sub_5343F();
+		sub_22DEA4(v2, v1);
+		sub_A402C(1.0f, 1.0f, 1.0f, 20);//r, g, b, flash length
+		v3 = *(DWORD*)(dword_479E70 + 308);
+		if (v3 != -1) {
+			v4 = v3 + dword_482290;
+			v5 = *(DWORD*)(v4 + 280);
+			if (v5 != -1)
+				sub_8836C(v5, 1.0f);//sound_id?, volume 1.0-2.9?
+		}
+	}
+}
+
+
+
+void initGSCustomMenu() {
+	
 #pragma region Init_Cartographer_Labels
 
 	add_cartographer_label(CMLabelMenuId_EscSettings, 0xFFFFFFF0, "Esc Settings");
@@ -3612,6 +4130,14 @@ void initGSCustomMenu() {
 	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF027, "The account you just entered has been successfully created! You may now use those details to login.");
 	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF028, "Verification Email Sent!");
 	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF029, "An email has been sent to the email address submitted. Please follow the instuctions in the email to activate your account.");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF02A, "Restart Required");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF02B, "The setting you have just changed requires that you restart your game for it to take effect.");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF02C, "Creating Account...");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF02D, "Processing your new account...\r\nPlease wait.");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF02E, "Logging in...");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF02F, "Please wait while you are being logged in.");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF030, "Connection Failed!");
+	add_cartographer_label(CMLabelMenuId_Error, 0xFFFFF031, "Please check your connection to:\r\nhttps://cartographer.online/\r\nthen try again.");
 
 
 	add_cartographer_label(CMLabelMenuId_Language, 0xFFFFFFF0, "Select Language");
@@ -3637,12 +4163,12 @@ void initGSCustomMenu() {
 
 	add_cartographer_label(CMLabelMenuId_EditCrosshair, 0xFFFFFFF0, "Edit Crosshair Offset");
 	add_cartographer_label(CMLabelMenuId_EditCrosshair, 0xFFFFFFF1, "Use the buttons below to modify the in-game Crosshair Offset.");
-	add_cartographer_label(CMLabelMenuId_EditCrosshair, 1, "+10");
-	add_cartographer_label(CMLabelMenuId_EditCrosshair, 2, "+1");
+	add_cartographer_label(CMLabelMenuId_EditCrosshair, 1, "+0.02");
+	add_cartographer_label(CMLabelMenuId_EditCrosshair, 2, "+0.001");
 	add_cartographer_label(CMLabelMenuId_EditCrosshair, 0xFFFF0003, "Offset: %f");
 	add_cartographer_label(CMLabelMenuId_EditCrosshair, 0xFFFF0013, "Offset Alteration Disabled");
-	add_cartographer_label(CMLabelMenuId_EditCrosshair, 4, "-1");
-	add_cartographer_label(CMLabelMenuId_EditCrosshair, 5, "-10");
+	add_cartographer_label(CMLabelMenuId_EditCrosshair, 4, "-0.001");
+	add_cartographer_label(CMLabelMenuId_EditCrosshair, 5, "-0.02");
 
 
 	add_cartographer_label(CMLabelMenuId_EditFOV, 0xFFFFFFF0, "Edit Field of View");
@@ -3663,6 +4189,31 @@ void initGSCustomMenu() {
 	add_cartographer_label(CMLabelMenuId_EditFPS, 0xFFFF0013, "Xlive FPS Limiter Disabled");
 	add_cartographer_label(CMLabelMenuId_EditFPS, 4, "-1");
 	add_cartographer_label(CMLabelMenuId_EditFPS, 5, "-10");
+
+
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFFFFF0, "Update");
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFFFFF1, "Update Project Cartographer.");
+	add_cartographer_label(CMLabelMenuId_Update, 1, (char*)0, true);
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFF0001, "Check for Updates");
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFFFF01, "Checking For Updates...");
+	add_cartographer_label(CMLabelMenuId_Update, 2, (char*)0, true);
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFF0002, "Download Updates");
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFFFF02, "Downloading Updates...");
+	add_cartographer_label(CMLabelMenuId_Update, 3, (char*)0, true);
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFF0003, "Install Updates");
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFFFF03, "Installing Updates...");
+	add_cartographer_label(CMLabelMenuId_Update, 0xFFFFF003, "Failed to run updater app!");
+	add_cartographer_label(CMLabelMenuId_Update, 4, "Cancel");
+
+
+	add_cartographer_label(CMLabelMenuId_Update_Note, 0xFFFFFFF0, "Outdated Version!");
+	add_cartographer_label(CMLabelMenuId_Update_Note, 0xFFFFFFF1, "You are using an outdated version of Project Cartographer! Would you like to go install the latest version?");
+	add_cartographer_label(CMLabelMenuId_Update_Note, 1, "Yes");
+	add_cartographer_label(CMLabelMenuId_Update_Note, 2, "No");
+
+
+	add_cartographer_label(CMLabelMenuId_Login_Warn, 0xFFFFFFF0, "NO CHEATING!");
+	add_cartographer_label(CMLabelMenuId_Login_Warn, 0xFFFFFFF1, "DO NOT CHEAT/HACK ONLINE.\r\nWe have a complex system made to keep you banned if you do. Don't risk it. We will catch you otherwise!");
 
 
 	add_cartographer_label(CMLabelMenuId_EditHudGui, 0xFFFFFFF0, "Customise HUD / GUI");
@@ -3711,7 +4262,7 @@ void initGSCustomMenu() {
 	add_cartographer_label(CMLabelMenuId_OtherSettings, 1, "> FPS Limit");
 	add_cartographer_label(CMLabelMenuId_OtherSettings, 0xFFFF0002, "Controller Aim-Assist");
 	add_cartographer_label(CMLabelMenuId_OtherSettings, 0xFFFF0003, "Discord Rich Presence");
-	add_cartographer_label(CMLabelMenuId_OtherSettings, 0xFFFF0004, "Force Lobby Countdown");
+	add_cartographer_label(CMLabelMenuId_OtherSettings, 0xFFFF0004, "xDelay");
 	add_cartographer_label(CMLabelMenuId_OtherSettings, 0xFFFF0005, "Game Intro Video");
 	add_cartographer_label(CMLabelMenuId_OtherSettings, 0xFFFF0006, "In-game Keyb. CTRLs");
 	add_cartographer_label(CMLabelMenuId_OtherSettings, 0xFFFF0007, "Raw Mouse Input");
@@ -3742,9 +4293,11 @@ void initGSCustomMenu() {
 	add_cartographer_label(CMLabelMenuId_Credits, 9, "Supersniper");
 	add_cartographer_label(CMLabelMenuId_Credits, 10, "--- Additional 7hanks ---");
 	add_cartographer_label(CMLabelMenuId_Credits, 11, "Project Cartographer Staff");
-	add_cartographer_label(CMLabelMenuId_Credits, 12, "H2MT (Past and Present)");
-	add_cartographer_label(CMLabelMenuId_Credits, 13, "Dev Preview Members");
-	add_cartographer_label(CMLabelMenuId_Credits, 14, "And the many many more from the Halo 2 Community!");
+	add_cartographer_label(CMLabelMenuId_Credits, 12, "PCMT (Mapping Team)");
+	add_cartographer_label(CMLabelMenuId_Credits, 13, "H2MT (Those past and present)");
+	add_cartographer_label(CMLabelMenuId_Credits, 14, "Dev Preview Members");
+	add_cartographer_label(CMLabelMenuId_Credits, 15, "And the many many more");
+	add_cartographer_label(CMLabelMenuId_Credits, 16, "from the Halo 2 Community!");
 
 
 	add_cartographer_label(CMLabelMenuId_AccountCreate, 0xFFFFFFF0, "Create Account");
@@ -3766,8 +4319,8 @@ void initGSCustomMenu() {
 
 	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF0, "Add Account");
 	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF1, "Enter your account's Username\r\n[or Email] and Password to Login.");
-	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF2, "Remember me");
-	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF3, "Don't remember me");
+	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF2, "-Remember me");
+	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF3, "-Don't remember me");
 	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF4, "[Username]");
 	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFFFF5, "[Password]");
 	add_cartographer_label(CMLabelMenuId_AccountEdit, 0xFFFFF002, "Enter Account Username or Email Address");
@@ -3782,10 +4335,10 @@ void initGSCustomMenu() {
 	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFFFFF0, "Online Accounts");
 	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFFFFF1, "Select an Account to Sign in to or use options to create/add/remove them.");
 	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0000, ">Add Account");
-	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0001, ">Remove Account");
-	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0002, ">Cancel Remove");
+	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0001, "-Remove Account");
+	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0002, "-Cancel Remove");
 	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0003, ">Create Account");
-	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0004, "| Play Offline |");
+	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0004, ">Play Offline");
 	add_cartographer_label(CMLabelMenuId_AccountList, 0xFFFF0005, "<Unnamed>");
 
 
@@ -3794,27 +4347,24 @@ void initGSCustomMenu() {
 	add_cartographer_label(CMLabelMenuId_Guide, 1, "Advanced Settings");
 	add_cartographer_label(CMLabelMenuId_Guide, 2, "Website");
 	add_cartographer_label(CMLabelMenuId_Guide, 3, "Credits");
+	add_cartographer_label(CMLabelMenuId_Guide, 4, "Update");
 
 
 #pragma endregion
-
+	
 	if (H2IsDediServer)
 		return;
+
+	CMSetupVFTables_Obscure();
 
 	setupSomeTests();
 
 	//"PRESS ANY KEY TO CONTINUE" mainmenu redirect.
-	PatchCall((DWORD)((BYTE*)H2BaseAddr + 0x23EF0A), (DWORD)&sub_209236);
+	PatchCall((DWORD)((BYTE*)H2BaseAddr + 0x23EF0A), &sub_209236);
 
 	DWORD dwBack;
 	pbtnHandler = (tbtnhandler)DetourClassFunc((BYTE*)H2BaseAddr + 0x213af2, (BYTE*)BtnHandlerCaller, 8);
 	VirtualProtect(pbtnHandler, 4, PAGE_EXECUTE_READWRITE, &dwBack);
-
-	//psub_20CE70 = (tsub_20CE70)DetourFunc((BYTE*)H2BaseAddr + 0x20CE70, (BYTE*)sub_20CE70, 6);
-	//VirtualProtect(psub_20CE70, 4, PAGE_EXECUTE_READWRITE, &dwBack);
-
-	//psub_20d68e = (tsub_20d68e)DetourClassFunc((BYTE*)H2BaseAddr + 0x20d68e, (BYTE*)sub_20d68e, 10);
-	//VirtualProtect(psub_20d68e, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
 	psub_23f6b7 = (tsub_23f6b7)DetourFunc((BYTE*)H2BaseAddr + 0x23f6b7, (BYTE*)sub_23f6b7, 7);
 	VirtualProtect(psub_23f6b7, 4, PAGE_EXECUTE_READWRITE, &dwBack);
@@ -3824,6 +4374,9 @@ void initGSCustomMenu() {
 
 	psub_209129 = (tsub_209129)DetourFunc((BYTE*)H2BaseAddr + 0x209129, (BYTE*)sub_209129, 5);
 	VirtualProtect(psub_209129, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+	psub_bd137 = (tsub_bd137)DetourFunc((BYTE*)H2BaseAddr + 0xbd137, (BYTE*)sub_bd137, 5);
+	VirtualProtect(psub_bd137, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
 
 	RefreshToggleIngameKeyboardControls();
@@ -3844,6 +4397,12 @@ void initGSCustomMenu() {
 	CMSetupVFTables_EditFOV();
 
 	CMSetupVFTables_EditFPS();
+
+	CMSetupVFTables_Update();
+
+	CMSetupVFTables_Update_Note();
+
+	CMSetupVFTables_Login_Warn();
 
 	CMSetupVFTables_EditHudGui();
 
@@ -3952,7 +4511,8 @@ void CMSetupVFTables(DWORD** menu_vftable_1, DWORD** menu_vftable_2, DWORD CM_La
 	memcpy(*menu_vftable_1, (BYTE*)H2BaseAddr + 0x3d96fc, 0x98);//Brightness
 
 	//Button Labels
-	*(DWORD*)((DWORD)*menu_vftable_1 + 0x90) = (DWORD)CM_LabelButtons;
+	if (CM_LabelButtons)
+		*(DWORD*)((DWORD)*menu_vftable_1 + 0x90) = (DWORD)CM_LabelButtons;
 
 
 	//clone a brightness menu_vftable_2
@@ -4004,11 +4564,14 @@ void CMSetupVFTables(DWORD** menu_vftable_1, DWORD** menu_vftable_2, DWORD CM_La
 	//*(DWORD*)((DWORD)*menu_vftable_2 + 0xC) = (DWORD)H2BaseAddr + 0x24f0eb;//gameoptions breaks text
 
 	//CALL for Title & Description
-	*(DWORD*)((DWORD)*menu_vftable_2 + 0x58) = (DWORD)sub_2111ab_CMLTD_nak;
+	if (sub_2111ab_CMLTD_nak)
+		*(DWORD*)((DWORD)*menu_vftable_2 + 0x58) = (DWORD)sub_2111ab_CMLTD_nak;
 	//Menu Button Preselected Option
-	*(DWORD*)((DWORD)*menu_vftable_2 + 0x5C) = (DWORD)CM_ButtonPreselection;
+	if (CM_ButtonPreselection)
+		*(DWORD*)((DWORD)*menu_vftable_2 + 0x5C) = (DWORD)CM_ButtonPreselection;
 	//Menu function pointer helper
-	*(DWORD*)((DWORD)*menu_vftable_2 + 0x98) = (DWORD)CM_FuncPtrHelper;
+	if (CM_FuncPtrHelper)
+		*(DWORD*)((DWORD)*menu_vftable_2 + 0x98) = (DWORD)CM_FuncPtrHelper;
 }
 
 int __stdcall BtnHandlerCaller(void* thisptr, int a2, int a3) {

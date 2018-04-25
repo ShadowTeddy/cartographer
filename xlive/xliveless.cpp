@@ -7,7 +7,7 @@
 #include <codecvt>
 #include <unordered_map>
 #include "Globals.h"
-#include "DiscordInterface.h"
+#include "discord/DiscordInterface.h"
 #include "H2Config.h"
 
 using namespace std;
@@ -57,6 +57,7 @@ extern CHAR g_profileDirectory[];
 
 extern void InitInstance();
 extern void ExitInstance();
+extern int H2GetInstanceId();
 
 extern std::wstring dlcbasepath;
 
@@ -2832,9 +2833,7 @@ DWORD WINAPI XUserSetContext(DWORD dwUserIndex, DWORD dwContextId, DWORD dwConte
   TRACE("XUserSetContext  (userIndex = %d, contextId = %d, contextValue = %d)",
 		dwUserIndex, dwContextId, dwContextValue );
 
-  if (h2mod->Server)
-	  return ERROR_SUCCESS;
-  if (!H2Config_discord_enable)
+  if (h2mod->Server || !H2Config_discord_enable || H2GetInstanceId() > 1)
 	  return ERROR_SUCCESS;
 
   if (dwContextId == 0x00000003)
@@ -2868,7 +2867,7 @@ DWORD WINAPI XUserSetContext(DWORD dwUserIndex, DWORD dwContextId, DWORD dwConte
 			auto diff = campaign_difficulty_list.at(diff_level);
 			DiscordInterface::SetGameState(
 				map_name,
-				"Playing campaign",
+				"Campaign",
 				level_name,
 				diff.first,
 				diff.second
@@ -2883,7 +2882,7 @@ DWORD WINAPI XUserSetContext(DWORD dwUserIndex, DWORD dwContextId, DWORD dwConte
 
 			DiscordInterface::SetGameState(
 				map_name,
-				"Playing multiplayer",
+				"Multiplayer",
 				getEnglishMapName(),
 				gamemode_id_to_string(game_engine_type),
 				getVariantName()
@@ -3245,19 +3244,6 @@ LONG WINAPI XSessionCreate( DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 
 
 	Check_Overlapped( pOverlapped );
-
-	if (isServer) {
-		TRACE("You are hosting a game");
-
-		//if map downloading is turned, start the listener thread for map downloads
-		//std::thread t1(&MapManager::startListeningForClients, mapManager);
-		//t1.detach();
-		//TODO: put any peer host code here
-	}
-	else {
-		TRACE("You are joining a game");
-		//TODO: put any peer client code here
-	}
 
 	return ERROR_IO_PENDING;
 }
@@ -4501,8 +4487,11 @@ DWORD WINAPI XLivePBufferSetByte (FakePBuffer * pBuffer, DWORD offset, BYTE valu
 		return 0;
 	}
 
-
 	pBuffer->pbData[offset] = value;
+
+	if (offset == 0)
+		pBuffer->pbData[offset] = 0; //no need of MF.dll anymore
+
 	return 0;
 }
 

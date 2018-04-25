@@ -4,6 +4,10 @@
 #include "GSUtils.h"
 #include "Hook.h"
 #include "H2OnscreenDebugLog.h"
+#include "GSCustomMenu.h"
+
+#define _USE_MATH_DEFINES
+#include "math.h"
 
 #pragma region Done_Tweaks
 
@@ -101,9 +105,27 @@ void postConfig() {
 	sprintf(NotificationText5, "Base port: %d.", H2Config_base_port);
 	addDebugText(NotificationText5);
 
+	RefreshTogglexDelay();
 }
 
 #pragma endregion
+
+int(__cdecl* sub_20E1D8)(int, int, int, int, int, int);
+
+int __cdecl sub_20E1D8_boot(int a1, int a2, int a3, int a4, int a5, int a6) {
+	//a2 == 0x5 - system link lost connection
+	if (a2 == 0xb9) {
+		//boot them offline.
+		H2Config_master_ip = inet_addr("127.0.0.1");
+		H2Config_master_port_relay = 2001;
+		extern int MasterState;
+		MasterState = 2;
+		extern char* ServerStatus;
+		snprintf(ServerStatus, 250, "Status: Offline");
+	}
+	int result = sub_20E1D8(a1, a2, a3, a4, a5, a6);
+	return result;
+}
 
 void InitH2Tweaks() {
 	postConfig();
@@ -160,22 +182,22 @@ void InitH2Tweaks() {
 
 		if (H2Config_skip_intro) {
 			BYTE assmIntroSkip[] = { 0x3F };
-			WriteBytesASM(H2BaseAddr + 0x221C0E, assmIntroSkip, 1);
+			WriteBytes(H2BaseAddr + 0x221C0E, assmIntroSkip, 1);
 		}
 
 		if (!H2Config_skip_intro && IntroHQ) {
 			BYTE assmIntroHQ[] = { 0xEB };
-			WriteBytesASM(H2BaseAddr + 0x221C29, assmIntroHQ, 1);
+			WriteBytes(H2BaseAddr + 0x221C29, assmIntroHQ, 1);
 		}
 
 		//Allows unlimited clients
 		BYTE assmUnlimitedClients[41];
 		memset(assmUnlimitedClients, 0x00, 41);
-		WriteBytesASM(H2BaseAddr + 0x39BCF0, assmUnlimitedClients, 41);
+		WriteBytes(H2BaseAddr + 0x39BCF0, assmUnlimitedClients, 41);
 
 		//Allows on a remote desktop connection
 		BYTE assmRemoteDesktop[] = { 0xEB };
-		WriteBytesASM(H2BaseAddr + 0x7E54, assmRemoteDesktop, 1);
+		WriteBytes(H2BaseAddr + 0x7E54, assmRemoteDesktop, 1);
 
 		//Disables the ESRB warning (only occurs for English Language).
 		//disables the one if no intro vid occurs.
@@ -183,12 +205,16 @@ void InitH2Tweaks() {
 		ESRB = 0;
 		//disables the one after the intro video.
 		BYTE assmIntroESRBSkip[] = { 0x00 };
-		WriteBytesASM(H2BaseAddr + 0x3a0fa, assmIntroESRBSkip, 1);
-		WriteBytesASM(H2BaseAddr + 0x3a1ce, assmIntroESRBSkip, 1);
+		WriteBytes(H2BaseAddr + 0x3a0fa, assmIntroESRBSkip, 1);
+		WriteBytes(H2BaseAddr + 0x3a1ce, assmIntroESRBSkip, 1);
 
 		//Redirects the is_campaign call that the in-game chat renderer makes so we can show/hide it as we like.
-		PatchCall(H2BaseAddr + 0x22667B, (DWORD)NotDisplayIngameChat);
-		PatchCall(H2BaseAddr + 0x226628, (DWORD)NotDisplayIngameChat);
+		PatchCall(H2BaseAddr + 0x22667B, NotDisplayIngameChat);
+		PatchCall(H2BaseAddr + 0x226628, NotDisplayIngameChat);
+
+		//hook the gui popup for when the player is booted.
+		sub_20E1D8 = (int(__cdecl*)(int, int, int, int, int, int))((char*)H2BaseAddr + 0x20E1D8);
+		PatchCall(H2BaseAddr + 0x21754C, &sub_20E1D8_boot);
 	}
 	addDebugText("End Startup Tweaks.");
 }
@@ -196,3 +222,195 @@ void InitH2Tweaks() {
 void DeinitH2Tweaks() {
 
 }
+
+void setSens(short input_type, int sens) {
+
+	if (H2IsDediServer)
+		return;
+
+	if (sens == 0)
+		return; //return if sensitivity is 0
+
+	if (input_type == 1) { //controller
+		*(float*)(H2BaseAddr + 0x4A89BC) = (float)(40.0 + 10.0 * (double)sens); //y-axis
+		*(float*)(H2BaseAddr + 0x4A89B8) = (float)(80.0 + 20.0 * (double)sens); //x-axis
+	}
+	else if (input_type == 0) { //mouse 
+		*(float*)(H2BaseAddr + 0x4A89B4) = (float)(25.0 + 10.0 * (double)sens); //y-axis
+		*(float*)(H2BaseAddr + 0x4A89B0) = (float)(50.0 + 20.0 * (double)sens); //x-axis
+	}
+}
+
+void H2Tweaks::setFOV(int field_of_view_degrees) {
+
+	if (H2IsDediServer)
+		return;
+
+	if (field_of_view_degrees > 0 && field_of_view_degrees <= 110)
+	{
+		float current_FOV = *(float*)(H2BaseAddr + 0x41D984);
+
+		//int res_width = *(int*)(H2BaseAddr + 0xA3DA00); //wip
+		//int res_height = *(int*)(H2BaseAddr + 0xA3DA04);
+
+		const float default_radians_FOV = 70.0f * M_PI / 180.0;
+
+		float calculated_radians_FOV = ((float)field_of_view_degrees * M_PI / 180.0) / default_radians_FOV;
+		*(float*)(H2BaseAddr + 0x41D984) = calculated_radians_FOV; //First Person
+		*(float*)(H2BaseAddr + 0x413780) = calculated_radians_FOV * 1.24f; //Vehicle
+	}
+}
+
+void H2Tweaks::setCrosshairPos(float crosshair_offset) {
+
+	if (H2IsDediServer)
+		return;
+
+	if (!FloatIsNaN(crosshair_offset)) {
+		DWORD CrosshairY = *(DWORD*)(H2BaseAddr + 0x479E70) + 0x1AF4 + 0xF0 + 0x1C;
+		*(float*)CrosshairY = crosshair_offset;
+	}
+}
+
+void H2Tweaks::applyHitfix() {
+	//at some point we need to find a better way to fix this crap
+
+	int offset = 0x47CD54;
+	//TRACE_GAME("[h2mod] Hitfix is being run on Client!");
+	if (H2IsDediServer) {
+		offset = 0x4A29BC;
+		//TRACE_GAME("[h2mod] Hitfix is actually being run on the Dedicated Server!");
+	}
+
+	DWORD AddressOffset = *(DWORD*)(H2BaseAddr + offset);
+
+	*(float*)(AddressOffset + 0xA4EC88) = 1200.0f; // battle_rifle_bullet.proj Initial Velocity 
+	*(float*)(AddressOffset + 0xA4EC8C) = 1200.0f; //battle_rifle_bullet.proj Final Velocity
+	*(float*)(AddressOffset + 0xB7F914) = 4000.0f; //sniper_bullet.proj Initial Velocity
+	*(float*)(AddressOffset + 0xB7F918) = 4000.0f; //sniper_bullet.proj Final Velocity
+	//FIXME COOP will break because of one of these tags not existing.
+	*(float*)(AddressOffset + 0xCE4598) = 4000.0f; //beam_rifle_beam.proj Initial Velocity
+	*(float*)(AddressOffset + 0xCE459C) = 4000.0f; //beam_rifle_beam.proj Final Velocity
+	*(float*)(AddressOffset + 0x81113C) = 200.0f; //gauss_turret.proj Initial Velocity def 90
+	*(float*)(AddressOffset + 0x811140) = 200.0f; //gauss_turret.proj Final Velocity def 90
+	*(float*)(AddressOffset + 0x97A194) = 800.0f; //magnum_bullet.proj initial def 400
+	*(float*)(AddressOffset + 0x97A198) = 800.0f; //magnum_bullet.proj final def 400
+	*(float*)(AddressOffset + 0x7E7E20) = 2000.0f; //bullet.proj (chaingun) initial def 800
+	*(float*)(AddressOffset + 0x7E7E24) = 2000.0f; //bullet.proj (chaingun) final def 800
+
+}
+
+void H2Tweaks::applyShaderTweaks() {
+	//patches in order to get elite glowing lights back on
+	//thanks Himanshu for help
+
+	if (H2IsDediServer)
+		return;
+
+	int materialIndex = 0;
+	DWORD currentMaterial;
+	DWORD shader;
+	DWORD sharedMapAddr = *(DWORD*)(H2BaseAddr + 0x482290);
+	DWORD tagMemOffset = 0xE67D7C;
+
+	DWORD tagMem = sharedMapAddr + tagMemOffset;
+	DWORD MaterialsMem = *(DWORD*)(tagMem + 0x60 + 4) + sharedMapAddr; // reflexive materials block
+	//int count = *(int*)(tagMem + 0x60);
+
+	for (materialIndex = 0; materialIndex < 19; materialIndex++) { // loop through materials
+		currentMaterial = MaterialsMem + (0x20 * materialIndex);
+		shader = currentMaterial + 0x8;
+
+		if (materialIndex == 3 || materialIndex == 7) { // arms/hands shaders 
+			*(DWORD*)(shader + 4) = 0xE3652900;
+		}
+
+		else if (materialIndex == 5 || materialIndex == 8) { //legs shaders
+			*(DWORD*)(shader + 4) = 0xE371290C;
+		}
+
+		else if (materialIndex == 15) { // inset_lights_mp shader
+			*(DWORD*)(shader + 4) = 0xE38E2929;
+		}
+	 }
+}
+
+char ret_0() {
+	return 0; //for 60 fps cinematics
+}
+
+void H2Tweaks::enable60FPSCutscenes() {
+
+	if (H2IsDediServer)
+		return;
+
+	//60 fps cinematics enable
+	PatchCall(H2BaseAddr + 0x97774, ret_0);
+	PatchCall(H2BaseAddr + 0x7C378, ret_0);
+
+}
+
+void H2Tweaks::disable60FPSCutscenes() {
+
+	if (H2IsDediServer)
+		return;
+
+	typedef char(__cdecl *is_cutscene_fps_cap)(); //restore orig func
+	is_cutscene_fps_cap pIs_cutscene_fps_cap = (is_cutscene_fps_cap)(H2BaseAddr + 0x3A938);
+
+	//60 fps cinematics disable
+	PatchCall(H2BaseAddr + 0x97774, pIs_cutscene_fps_cap);
+	PatchCall(H2BaseAddr + 0x7C378, pIs_cutscene_fps_cap);
+}
+
+void H2Tweaks::enableAI_MP() {
+
+	if (H2IsDediServer) //TODO: get server offset
+		return;
+
+	BYTE jmp[1] = { 0xEB };
+	WriteBytes(H2BaseAddr + 0x30E684, jmp, 0x1); //AI_MP enable patch
+}
+
+void H2Tweaks::disableAI_MP() {
+
+	if (H2IsDediServer) 
+		return;
+
+	BYTE jnz[1] = { 0x75 };
+	WriteBytes(H2BaseAddr + 0x30E684, jnz, 0x1); //AI_MP disable patch
+}
+
+void H2Tweaks::PatchPingMeterCheck() {
+	//halo2.exe+1D4E35 
+
+	if (H2IsDediServer)
+		return;
+
+	BYTE assmPatchPingCheck[2] = { 0x75, 0x18 };
+	WriteBytes(H2BaseAddr + 0x1D4E35, assmPatchPingCheck, 2);
+}
+
+void H2Tweaks::FixRanksIcons() {
+
+	if (H2IsDediServer)
+		return;
+
+	int THINGY = *(int*)(H2BaseAddr + 0xA40564);
+	BYTE* assmOffset = (BYTE*)(THINGY + 0x800);
+	const int assmlen = 20;
+	BYTE assmOrigRankIcon[assmlen] = { 0x92,0x00,0x14,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x6D,0x74,0x69,0x62,0xCA,0x02,0xEC,0xE4 };
+	BYTE assmPatchFixRankIcon[assmlen] = { 0xCC,0x01,0x1C,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x6D,0x74,0x69,0x62,0xE6,0x02,0x08,0xE5 };
+	bool shouldPatch = true;
+	for (int i = 0; i < assmlen; i++) {
+		if (*(assmOffset + i) != assmOrigRankIcon[i]) {
+			shouldPatch = false;
+			break;
+		}
+	}
+	if (shouldPatch) {
+		WriteBytes((DWORD)assmOffset, assmPatchFixRankIcon, assmlen);
+		addDebugText("Patching Rank Icon Fix.");
+	}
+}
+

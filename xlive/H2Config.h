@@ -6,9 +6,9 @@ void SaveH2Config();
 void ReadH2Config();
 
 #define DLL_VERSION_MAJOR               0
-#define DLL_VERSION_MINOR               3
-#define DLL_VERSION_REVISION            1
-#define DLL_VERSION_BUILD               0
+#define DLL_VERSION_MINOR               4
+#define DLL_VERSION_REVISION            0
+#define DLL_VERSION_BUILD				4
 
 #define DLL_VERSION            DLL_VERSION_MAJOR, DLL_VERSION_MINOR, DLL_VERSION_REVISION, DLL_VERSION_BUILD
 #define STRINGIZE2(s) #s
@@ -35,8 +35,11 @@ extern bool H2Config_controller_aim_assist;
 extern int H2Config_fps_limit;
 extern int H2Config_field_of_view;
 extern float H2Config_crosshair_offset;
+extern int H2Config_sens_controller;
+extern int H2Config_sens_mouse;
 extern bool H2Config_disable_ingame_keyboard;
 extern bool H2Config_hide_ingame_chat;
+extern bool H2Config_xDelay;
 extern int H2Config_custom_resolution_x;
 extern int H2Config_custom_resolution_y;
 extern char H2Config_dedi_server_name[32];
@@ -52,4 +55,5 @@ extern int H2Config_hotkeyIdAlignWindow;
 extern int H2Config_hotkeyIdWindowMode;
 extern int H2Config_hotkeyIdToggleHideIngameChat;
 extern int H2Config_hotkeyIdGuide;
+extern int H2Config_hotkeyIdConsole;
 

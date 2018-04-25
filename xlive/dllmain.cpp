@@ -4,12 +4,13 @@
 #include "H2MOD.h"
 #include <iostream>
 #include <Shellapi.h>
-#include "discord-rpc.h"
 #include "H2Startup.h"
 #include "H2OnscreenDebugLog.h"
 #include "GSRunLoop.h"
 #include "H2ConsoleCommands.h"
 #include "H2Config.h"
+#include <sstream>
+#include "ReadIniArguments.h"
 
 extern ConsoleCommands* commands;
 
@@ -76,7 +77,7 @@ void trace(LPWSTR message, ...)
 		return;
 
 	EnterCriticalSection (&d_lock);
-	SYSTEMTIME	t;
+	SYSTEMTIME t;
 	GetLocalTime (&t);
 
 	fwprintf (logfile, L"%02d/%02d/%04d %02d:%02d:%02d.%03d ", t.wDay, t.wMonth, t.wYear, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
@@ -98,7 +99,7 @@ void trace2(LPWSTR message, ...)
 		return;
 
 	EnterCriticalSection (&d_lock);
-	SYSTEMTIME	t;
+	SYSTEMTIME t;
 	GetLocalTime (&t);
 
 	fwprintf (logfile, L"%02d/%02d/%04d %02d:%02d:%02d.%03d ", t.wDay, t.wMonth, t.wYear, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
@@ -120,7 +121,7 @@ void trace_game(LPWSTR message, ...)
 		return;
 
 	EnterCriticalSection(&d_lock);
-	SYSTEMTIME	t;
+	SYSTEMTIME t;
 	GetLocalTime(&t);
 
 	fwprintf(loggame, L"%02d/%02d/%04d %02d:%02d:%02d.%03d ", t.wDay, t.wMonth, t.wYear, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
@@ -143,7 +144,7 @@ void trace_game_network(LPSTR message, ...)
 		return;
 
 	EnterCriticalSection(&d_lock);
-	SYSTEMTIME	t;
+	SYSTEMTIME t;
 	GetLocalTime(&t);
 
 	fprintf(loggamen, "%02d/%02d/%04d %02d:%02d:%02d.%03d ", t.wDay, t.wMonth, t.wYear, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
@@ -183,6 +184,20 @@ void trace_game_narrow(LPSTR message, ...)
 }
 #endif
 
+std::wstring prepareLogFileName(std::wstring logFileName) {
+	std::wstring instanceNumber(L"");
+	if (H2GetInstanceId() > 1) {
+		std::wstringstream stream;
+		stream << H2GetInstanceId();
+		instanceNumber = L".";
+		instanceNumber += stream.str();
+	}
+	std::wstring filename = logFileName;
+	filename += instanceNumber;
+	filename += L".log";
+	return filename;
+}
+
 void InitInstance()
 {
 	static bool init = true;
@@ -204,42 +219,6 @@ void InitInstance()
 		InitializeCriticalSection(&d_lock);
 
 		dlcbasepath = L"DLC";
-
-
-#define CHECK_ARG_STR(x,y) \
-	if( strstr( str,x ) == str ) \
-	{ \
-		sscanf( str + strlen(x), "%s", &y ); \
-		continue; \
-	}
-
-#define CHECK_ARG(x,y) \
-	if( strstr( str,x ) == str ) \
-	{ \
-		sscanf( str + strlen(x), "%d", &y ); \
-		continue; \
-	}
-
-#define CHECK_ARG_FLOAT(x,y) \
-	if( strstr(str, x) == str) \
-	{ \
-		sscanf(str + strlen(x), "%f", &y ); \
-		continue; \
-	}
-
-#define CHECK_ARG_I64(x,y) \
-	if( strstr( str,x ) == str ) \
-	{ \
-		sscanf( str + strlen(x), "%I64x", &y ); \
-		continue; \
-	}
-
-#define gCHECK_ARG(x,y) \
-	if( strstr( gstr,x ) == gstr ) \
-	{ \
-		sscanf( gstr + strlen(x), "%d", &y ); \
-		continue; \
-	}
 
 #pragma region GunGame Levels
 		if (b_GunGame == 1)
@@ -280,18 +259,15 @@ void InitInstance()
 		}
 
 #pragma endregion
-
 		if (H2Config_debug_log)
 		{
-			if (logfile = _wfopen(L"xlive_trace.log", L"wt"))
-			{
+			if (logfile = _wfopen(prepareLogFileName(L"xlive_trace").c_str(), L"wt"))
 				TRACE("Log started (xLiveLess 2.0a4)\n");
-			}
 
-			if (loggame = _wfopen(L"h2mod.log", L"wt"))
+			if (loggame = _wfopen(prepareLogFileName(L"h2mod").c_str(), L"wt"))
 				TRACE_GAME("Log started (H2MOD 0.1a1)\n");
 
-			if (loggamen = _wfopen(L"h2network.log", L"wt"))
+			if (loggamen = _wfopen(prepareLogFileName(L"h2network").c_str(), L"wt"))
 				TRACE_GAME_NETWORK("Log started (H2MOD - Network 0.1a1)\n");
 		}
 
@@ -330,8 +306,8 @@ void ExitInstance()
 		fclose (logfile);
 		fflush (loggame);
 		fclose (loggame);
-		fclose (loggamen);
 		fflush (loggamen);
+		fclose (loggamen);
 		
 		logfile = NULL;
 		loggame = NULL;

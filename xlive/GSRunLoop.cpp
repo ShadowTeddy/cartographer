@@ -198,6 +198,10 @@ void hotkeyFuncTest() {
 int hotkeyIdTest2 = VK_F6;
 void hotkeyFuncTest2() {
 	addDebugText("unconfused");
+
+	GSCustomMenuCall_Obscure();
+
+	return;
 	//0 - Go to main menu root.
 	//1 - Activate Product to continue playing diag.
 	//2 - opens main menu wgit (6) - (doesn't render when ingame).
@@ -244,6 +248,10 @@ void hotkeyFuncHelp() {
 	PadCStringWithChar(hotkeyname, 20, ' ');
 	snprintf(tempTextEntry, 255, "%s- Toggles hiding the in-game chat menu.", hotkeyname);
 	addDebugText(tempTextEntry);
+	GetVKeyCodeString(H2Config_hotkeyIdConsole, hotkeyname, 20);
+	PadCStringWithChar(hotkeyname, 20, ' ');
+	snprintf(tempTextEntry, 255, "%s- Toggles hiding the Console Menu.", hotkeyname);
+	addDebugText(tempTextEntry);
 	//addDebugText("F5      - Toggle online Coop mode.");
 	//addDebugText("F10     - Fix in-game player camera from a white/black bad cutscene.");
 	//addDebugText("Home    - Sight Possession Hack.");
@@ -254,8 +262,8 @@ void hotkeyFuncHelp() {
 }
 
 const int hotkeyLen = 9;
-//GSFIXME: Set only completed 5/6
-int hotkeyListenLen = 7;
+//GSFIXME: Set only completed 6
+int hotkeyListenLen = 6;
 int* hotkeyId[hotkeyLen] = { &H2Config_hotkeyIdHelp, &H2Config_hotkeyIdToggleDebug, &H2Config_hotkeyIdAlignWindow, &H2Config_hotkeyIdWindowMode, &H2Config_hotkeyIdToggleHideIngameChat, &H2Config_hotkeyIdGuide, &hotkeyIdTest, &hotkeyIdTest2, &hotkeyIdEsc };
 bool hotkeyPressed[hotkeyLen] = { false, false, false, false, false, false, false, false, false };
 void(*hotkeyFunc[hotkeyLen])(void) = { hotkeyFuncHelp, hotkeyFuncHideDebug, hotkeyFuncAlignWindow, hotkeyFuncWindowMode, hotkeyFuncToggleHideIngameChat, hotkeyFuncGuide, hotkeyFuncTest, hotkeyFuncTest2, hotkeyFuncEsc };
@@ -356,12 +364,12 @@ void initGSRunLoop() {
 	addDebugText("Pre GSRunLoop Hooking.");
 	if (H2IsDediServer) {
 		addDebugText("Hooking Loop & Shutdown Function");
-		PatchCall(H2BaseAddr + 0xc6cb, (DWORD)HookedServerShutdownCheck);
+		PatchCall(H2BaseAddr + 0xc6cb, HookedServerShutdownCheck);
 	}
 	else {
 		addDebugText("Hooking Loop Function");
 		sub_287a1 = (signed int(*)())((char*)H2BaseAddr + 0x287a1);
-		PatchCall(H2BaseAddr + 0x399f3, (DWORD)HookedClientRandFunc);
+		PatchCall(H2BaseAddr + 0x399f3, HookedClientRandFunc);
 	}
 	addDebugText("Post GSRunLoop Hooking.");
 }
