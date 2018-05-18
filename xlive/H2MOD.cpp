@@ -13,7 +13,6 @@
 #include "Network.h"
 #include "xliveless.h"
 #include "CUser.h"
-#include <h2mod.pb.h>
 #include <Mmsystem.h>
 #include <thread>
 #include "Globals.h"
@@ -26,10 +25,10 @@
 #include "Blam\Engine\FileSystem\FiloInterface.h"
 
 H2MOD *h2mod = new H2MOD();
-GunGame *gg = new GunGame();
-Infection *inf = new Infection();
+GunGame* gunGame = new GunGame();
+Infection* infectionHandler = new Infection();
 Halo2Final *h2f = new Halo2Final();
-CustomNetwork *network = new CustomNetwork();
+Mouseinput *mouse = new Mouseinput();
 
 bool b_Infection = false;
 bool b_Halo2Final = false;
@@ -37,7 +36,6 @@ bool b_H2X = false;
 
 extern bool b_GunGame;
 extern CUserManagement User;
-extern bool isHost;
 extern HANDLE H2MOD_Network;
 extern bool NetworkActive;
 extern bool Connected;
@@ -442,6 +440,7 @@ void H2MOD::set_unit_team_index(int unit_datum_index, BYTE team)
 	}
 }
 
+//can be used on clients and server
 void H2MOD::set_unit_biped(BYTE biped, int pIndex)
 {
 	if (pIndex >= 0 && pIndex < 16)
@@ -482,51 +481,6 @@ void H2MOD::set_local_grenades(BYTE type, BYTE count, int pIndex)
 			*(BYTE*)((BYTE*)unit_object + 0x253) = count;
 	}
 
-}
-
-void H2MOD::set_unit_grenades(BYTE type, BYTE count, int pIndex, bool bReset)
-{
-	int unit_datum_index = h2mod->get_unit_datum_from_player_index(pIndex);
-	wchar_t* pName = h2mod->get_player_name_from_index(pIndex);
-
-	int unit_object = call_get_object(unit_datum_index, 3);
-	if (unit_object)
-	{
-		if (bReset)
-			call_unit_reset_equipment(unit_datum_index);
-
-		if (type == GrenadeType::Frag)
-		{
-			*(BYTE*)((BYTE*)unit_object + 0x252) = count;
-		}
-
-		if (type == GrenadeType::Plasma)
-		{
-			*(BYTE*)((BYTE*)unit_object + 0x253) = count;
-		}
-
-		H2ModPacket GrenadePak;
-		GrenadePak.set_type(H2ModPacket_Type_set_unit_grenades);
-		h2mod_set_grenade *gnade = GrenadePak.mutable_set_grenade();
-		gnade->set_count(count);
-		gnade->set_pindex(pIndex);
-		gnade->set_type(type);
-
-		char* GrenadeBuf = new char[GrenadePak.ByteSize()];
-		GrenadePak.SerializeToArray(GrenadeBuf, GrenadePak.ByteSize());
-
-		for (auto it = NetworkPlayers.begin(); it != NetworkPlayers.end(); ++it)
-		{
-			if (wcscmp(it->first->PlayerName, pName) == 0)
-			{
-				it->first->PacketData = GrenadeBuf;
-				it->first->PacketSize = GrenadePak.ByteSize();
-				it->first->PacketsAvailable = true;
-			}
-		}
-
-
-	}
 }
 
 BYTE H2MOD::get_local_team_index()
@@ -574,17 +528,21 @@ void SoundThread(void)
 
 		if (h2mod->SoundMap.size() > 0)
 		{
-			auto it = h2mod->SoundMap.begin();
-			while (it != h2mod->SoundMap.end())
+			std::unordered_map<wchar_t*, int> tempSoundMap;
+			tempSoundMap.insert(h2mod->SoundMap.begin(), h2mod->SoundMap.end());
+			h2mod->SoundMap.clear();
+			//unlock immediately after reading everything from sound map
+			lck.unlock();
+
+			auto it = tempSoundMap.begin();
+			while (it != tempSoundMap.end())
 			{
 				TRACE_GAME("[H2MOD-SoundQueue] - attempting to play sound %ws - delaying for %i miliseconds first", it->first, it->second);
 				Sleep(it->second);
 				PlaySound(it->first, NULL, SND_FILENAME);
-				it = h2mod->SoundMap.erase(it);
+				it = tempSoundMap.erase(it);
 			}
 		}
-		
-		//Sleep(100);
 	}
 
 }
@@ -631,11 +589,15 @@ char __cdecl OnPlayerDeath(int unit_datum_index, int a2, char a3, char a4)
 	//TRACE_GAME("OnPlayerDeath(unit_datum_index: %08X, a2: %08X, a3: %08X, a4: %08X)", unit_datum_index,a2,a3,a4);
 	//TRACE_GAME("OnPlayerDeath() - Team: %i", h2mod->get_unit_team_index(unit_datum_index));
 
-	if (b_GunGame && (h2mod->Server || isHost))
-		gg->PlayerDied(unit_datum_index);
+	if (b_GunGame) {
+		gunGame->playerDeath->setUnitDatumIndex(unit_datum_index);
+		gunGame->playerDeath->execute();
+	}
 
-	if (b_Infection)
-		inf->PlayerInfected(unit_datum_index);
+	if (b_Infection) {
+		infectionHandler->playerDeath->setUnitDatumIndex(unit_datum_index);
+		infectionHandler->playerDeath->execute();
+	}
 
 	return pplayer_death(unit_datum_index, a2, a3, a4);
 }
@@ -650,8 +612,10 @@ void __stdcall OnPlayerScore(void* thisptr, unsigned short a2, int a3, int a4, i
 	if (a5 == 7) //player got a kill?
 	{
 		int PlayerIndex = a2;
-		if (b_GunGame && (isHost || h2mod->Server))
-			gg->LevelUp(PlayerIndex);
+		if (b_GunGame) {
+			gunGame->playerKill->setPlayerIndex(PlayerIndex);
+			gunGame->playerKill->execute();
+		}
 	}
 
 #pragma endregion
@@ -675,39 +639,6 @@ void H2MOD::PatchWeaponsInteraction(bool b_Enable)
 	}
 	WriteBytes(offset, assm, 5);
 }
-
-static bool OnNewRound(int a1)
-{
-
-	bool(__cdecl* CallNewRound)(int a1);
-	CallNewRound = (bool(__cdecl*)(int))((char*)h2mod->GetBase() + ((h2mod->Server) ? 0x6A87C : 0x6B1C8));
-	//addDebugText("New Round Commencing");
-	
-	if (b_Infection)
-		inf->NextRound();
-
-	if (b_GunGame)
-		gg->NextRound();
-
-	return CallNewRound(a1);
-
-
-}
-void H2MOD::PatchNewRound(bool hackit) //All thanks to Glitchy Scripts who wrote this <3
-{
-	//Replace the Function call  At Offset with OnNewRound
-	DWORD offset = 0;
-
-	if (h2mod->Server)
-		offset = 0x700EF;
-	else
-		offset = 0x715ee;
-	if(hackit)	
-		PatchCall((DWORD)((char*)h2mod->GetBase() + offset), OnNewRound); 
-	else
-		PatchCall((DWORD)((char*)h2mod->GetBase() + offset), (h2mod->GetBase() + ((h2mod->Server) ? 0x6A87C : 0x6B1C8)));
-}
-
 
 /*
 TODO: might be useful for updating player count while in-lobby
@@ -753,8 +684,13 @@ void __cdecl onGameEngineChange_hook(int a1)
 		if (b_Halo2Final && !h2mod->Server)
 			h2f->Dispose();
 
-		if (b_Infection)
-			inf->Deinitialize();
+		if (b_Infection) {
+			infectionHandler->deinitializer->execute();
+		}
+
+		if (b_GunGame) {
+			gunGame->deinitializer->execute();
+		}
 
 		H2Tweaks::disableAI_MP(); //TODO: get dedi offset
 		H2Tweaks::FixRanksIcons();
@@ -804,6 +740,27 @@ void __cdecl onGameEngineChange_hook(int a1)
 		H2Tweaks::setCrosshairPos(H2Config_crosshair_offset);
 		//H2Tweaks::applyShaderTweaks(); 
 
+	}
+
+	if (GameEngine != 3 && GameState == 3)
+	{
+		if (b_Infection) {
+			infectionHandler->initializer->execute();
+		}
+
+		if (b_GunGame) {
+			gunGame->initializer->execute();
+		}
+	}
+#pragma region H2V Stuff
+	if (!h2mod->Server)
+	{
+		//Crashfix
+		//*(int*)(h2mod->GetBase() + 0x464940) = 0;
+		//*(int*)(h2mod->GetBase() + 0x46494C) = 0;
+		//*(int*)(h2mod->GetBase() + 0x464958) = 0;
+		//*(int*)(h2mod->GetBase() + 0x464964) = 0;
+		
 		if (!h2mod->Server) //h2v stuff
 		{
 			//Crashfix
@@ -812,41 +769,33 @@ void __cdecl onGameEngineChange_hook(int a1)
 			//*(int*)(h2mod->GetBase() + 0x464958) = 0;
 			//*(int*)(h2mod->GetBase() + 0x464964) = 0;
 
-			if (GameState == 3) 
-			{
-				if (b_Infection)
-					inf->Initialize();
-
-				if (b_GunGame && isHost)
-					gg->Initialize();
-
-				if (b_Halo2Final)
-					h2f->Initialize();
-
+			if (GameState == 3) {
 				if (b_H2X)
 					H2X::Initialize();
 				else
 					H2X::Deinitialize();
 			}	
 		}
-		else //h2server
-		{
-			if (GameState == 3) {
-				if (b_Infection)
-					inf->Initialize();
-
-				if (b_GunGame)
-					gg->Initialize();
-			}
-		}
 
 	}
+	else {
+#pragma endregion
 
-	else if (GameEngine == SINGLE_PLAYER_ENGINE) { //if anyone wants to run code on map load single player
-		addDebugText("GameEngine: Single-player, apply patches");
+#pragma region H2Server Stuff
+		if (GameEngine != 3 && GameState == 3)
+		{
+			if (b_H2X)
+				H2X::Initialize();
+			else
+				H2X::Deinitialize();
+		}
 
-		H2Tweaks::setCrosshairPos(H2Config_crosshair_offset);
-		H2Tweaks::enable60FPSCutscenes();	
+		else if (GameEngine == SINGLE_PLAYER_ENGINE) { //if anyone wants to run code on map load single player
+			addDebugText("GameEngine: Single-player, apply patches");
+
+			H2Tweaks::setCrosshairPos(H2Config_crosshair_offset);
+			H2Tweaks::enable60FPSCutscenes();
+		}
 	}
 }
 
@@ -858,16 +807,26 @@ bool __cdecl OnPlayerSpawn(int a1)
 	//TRACE_GAME("OnPlayerSpawn(a1: %08X)", a1);
 	int PlayerIndex = a1 & 0x000FFFF;
 
-	if (b_Infection)
-		inf->PreSpawn(PlayerIndex);
-	
+	if (b_Infection) {
+		infectionHandler->preSpawnPlayer->setPlayerIndex(PlayerIndex);
+		infectionHandler->preSpawnPlayer->execute();
+	}
+
+	if (b_GunGame) {
+		gunGame->preSpawnPlayer->setPlayerIndex(PlayerIndex);
+		gunGame->preSpawnPlayer->execute();
+	}
 	bool ret = pspawn_player(a1);	
 
-	if (b_Infection)
-		inf->SpawnPlayer(PlayerIndex);
+	if (b_Infection) {
+		infectionHandler->spawnPlayer->setPlayerIndex(PlayerIndex);
+		infectionHandler->spawnPlayer->execute();
+	}
 
-	if (b_GunGame && (isHost || h2mod->Server))
-		gg->SpawnPlayer(PlayerIndex);
+	if (b_GunGame) {
+		gunGame->spawnPlayer->setPlayerIndex(PlayerIndex);
+		gunGame->spawnPlayer->execute();
+	}
 
 	return ret;
 }
@@ -894,7 +853,6 @@ Should take a look here for extended functions on scoring chances are we're alre
 
 void __stdcall join_game(void* thisptr, int a2, int a3, int a4, int a5, XNADDR* host_xn, int a7, int a8, int a9, int a10, int a11, char a12, int a13, int a14)
 {
-	isServer = false;
 	Connected = false;
 	NetworkActive = false;
 
@@ -905,10 +863,14 @@ void __stdcall join_game(void* thisptr, int a2, int a3, int a4, int a5, XNADDR* 
 	sockaddr_in SendStruct;
 
 	if (host_xn->ina.s_addr != H2Config_ip_wan)
+	{
+		TRACE("XN is not equal to the WAN address, assigning external XN");
 		SendStruct.sin_addr.s_addr = host_xn->ina.s_addr;
+	}
 	else
+	{ 
 		SendStruct.sin_addr.s_addr = H2Config_ip_lan;
-
+	}
 	short nPort = (ntohs(host_xn->wPortOnline) + 1);
 
 	TRACE("join_game nPort: %i", nPort);
@@ -923,26 +885,17 @@ void __stdcall join_game(void* thisptr, int a2, int a3, int a4, int a5, XNADDR* 
 
 	int securitysend_1001 = sendto(game_sock, (char*)User.SecurityPacket, 8 + sizeof(XNADDR), 0, (SOCKADDR *)&SendStruct, sizeof(SendStruct));
 
+	if (securitysend_1001 != (8 + sizeof(XNADDR)))
+		TRACE("join_game Security Packet Send had return different than len: %i", securitysend_1001);
+
 	User.CreateUser(host_xn, FALSE);
 
-	if (securitysend_1001 == SOCKET_ERROR)
+
+	if (securitysend_1001 == SOCKET_ERROR )
 	{
 		TRACE("join_game Security Packet - Socket Error True");
 		TRACE("join_game Security Packet - WSAGetLastError(): %08X", WSAGetLastError());
 	}
-
-
-	/*
-		If the network thread doesn't complete it's loop before we reach create thread there's a race condition here, 
-		We'll end up creating an additional thread.
-
-		To account for this we'll check if H2MOD_Network is still valid instead of completely relying on NetworkActive bool.
-	*/
-	if (H2MOD_Network)
-		TerminateThread(H2MOD_Network, 0);
-
-	int Data_of_network_Thread = 1;
-	H2MOD_Network = CreateThread(NULL, 0, NetworkThread, &Data_of_network_Thread, 0, NULL);
 
 	return pjoin_game(thisptr, a2, a3, a4, a5, host_xn, a7, a8, a9, a10, a11, a12, a13, a14);
 }
@@ -995,7 +948,7 @@ typedef int(__cdecl *build_gui_list)(int a1, int a2, int a3);
 build_gui_list build_gui_list_method;
 
 int __cdecl buildGuiList(int a1, int a2, int a3) {
-	if (b_Infection && a1 == (DWORD)(h2mod->GetBase() + 0x3d3620) && !isHost) {
+	if (b_Infection && a1 == (DWORD)(h2mod->GetBase() + 0x3d3620) && !gameManager->isHost()) {
 		a2 = 1;
 	}
 	return build_gui_list_method(a1, a2, a3);
@@ -1067,10 +1020,31 @@ char filo_write__encrypted_data_hook(filo *file_ptr, DWORD nNumberOfBytesToWrite
 	return FiloInterface::write(file_ptr, lpBuffer, nNumberOfBytesToWrite);
 }
 
+//int static_lod_state = static_lod::cinematic;
+DWORD calculate_model_lod;
+DWORD calculate_model_lod_detour_end;
+__declspec(naked) void calculate_model_lod_detour()
+{
+	__asm
+	{
+		// replaced code
+		// todo check if this is needed when using a static LOD, might save on some processor time
+		call calculate_model_lod
+
+		cmp H2Config_static_lod_state, 0
+		jz END_DETOUR
+
+		mov eax, H2Config_static_lod_state
+		sub eax, 1 // convert setting to in-game model LOD value (0 - 5, L1 - L6)
+
+		END_DETOUR:
+		jmp calculate_model_lod_detour_end
+	}
+}
 void H2MOD::securityPacketProcessing()
 {
 
-	if (!isHost)
+	if (!gameManager->isHost())
 	{
 		sockaddr_in SendStruct;
 
@@ -1086,6 +1060,70 @@ void H2MOD::securityPacketProcessing()
 	}
 }
 
+typedef void(__cdecl *on_custom_map_change)(const void* a1);
+on_custom_map_change on_custom_map_change_method;
+
+void __cdecl onCustomMapChange(const void* a1) {
+	on_custom_map_change_method(a1);
+	//map changed, send update
+	mapManager->sendMapInfoPacket();
+}
+
+typedef char(__stdcall *intercept_map_load)(LPCRITICAL_SECTION* thisx, const void *a2);
+intercept_map_load intercept_map_load_method;
+
+char __stdcall interceptMapLoad(LPCRITICAL_SECTION* thisx, const void *a2) {
+	LPCRITICAL_SECTION *v2; // ebx@1
+	struct _RTL_CRITICAL_SECTION *v3; // ebp@1
+	char result; // al@2
+
+	TRACE_GAME("[h2mod] Intercepted map load - crash function");
+
+	typedef char(__thiscall *map_filetime_check)(LPCRITICAL_SECTION* thisx, int a2, unsigned int a3);
+	map_filetime_check map_filetime_check_method = (map_filetime_check)(h2mod->GetBase() + 0xC1E01);
+
+	typedef char(__thiscall *map_touch)(LPCRITICAL_SECTION* thisx, int a2);
+	map_touch map_touch_method = (map_touch)(h2mod->GetBase() + 0xC2541);
+
+	typedef char(*unknown_function)();
+	unknown_function unknown_function_method = (unknown_function)(h2mod->GetBase() + 0x4541);
+
+	typedef char(__stdcall *unknown_function2)(int a1);
+	unknown_function2 unknown_function_method2 = (unknown_function2)(h2mod->GetBase() + 0xC2069);
+
+	typedef int(__thiscall *map_limit_touch)(int thisx, int a2);
+	map_limit_touch map_limit_touch_method = (map_limit_touch)(h2mod->GetBase() + 0xC1FA6);
+
+	v2 = thisx;
+	v3 = *thisx;
+
+	TRACE_GAME("[h2mod] Intercepted map load - about to enter critical section");
+	EnterCriticalSection(*thisx);
+	TRACE_GAME("[h2mod] Intercepted map load - in critical section");
+	if (a2
+		&& *((WORD *)v2 + 74008) < 0x32u
+		&& map_filetime_check_method(v2, (int)a2, 0xB90u)
+		&& !map_touch_method(v2, (int)a2))
+	{
+		if (!unknown_function_method())
+			unknown_function_method2((int)a2);
+
+		map_limit_touch_method((int)v2, (int)a2);
+		TRACE_GAME("[h2mod] Intercepted map load - memcpy");
+		memcpy(&v2[740 * (*((WORD *)v2 + 0x12118))++ + 4], a2, 0xB90u);
+		LeaveCriticalSection(v3);
+		TRACE_GAME("[h2mod] Intercepted map load - left critical section");
+		result = 1;
+	}
+	else
+	{
+		LeaveCriticalSection(v3);
+		TRACE_GAME("[h2mod] Intercepted map load - left critical section");
+		result = 0;
+	}
+	return result;
+}
+
 void H2MOD::ApplyHooks() {
 	/* Should store all offsets in a central location and swap the variables based on h2server/halo2.exe*/
 	/* We also need added checks to see if someone is the host or not, if they're not they don't need any of this handling. */
@@ -1098,6 +1136,16 @@ void H2MOD::ApplyHooks() {
 
 		//pload_wgit = (tload_wgit)DetourClassFunc((BYTE*)this->GetBase() + 0x2106A2, (BYTE*)OnWgitLoad, 13);
 		//VirtualProtect(pload_wgit, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+		intercept_map_load_method = (intercept_map_load)DetourClassFunc((BYTE*)this->GetBase() + 0xC259B, (BYTE*)interceptMapLoad, 13);
+		VirtualProtect(intercept_map_load_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+		//on_custom_map_change_method = (on_custom_map_change)DetourFunc((BYTE*)this->GetBase() + 0x32176, (BYTE*)onCustomMapChange, 5);
+		//VirtualProtect(on_custom_map_change_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+		//boot method
+		calls_session_boot_method = (calls_session_boot)DetourClassFunc((BYTE*)this->GetBase() + 0x1CCE9B, (BYTE*)calls_session_boot_sub_1cce9b, 8);
+		VirtualProtect(calls_session_boot_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
 		psub_4F17A = (tsub_4F17A)DetourFunc((BYTE*)this->GetBase() + 0x4F17A, (BYTE*)sub_4F17A, 7);
 		VirtualProtect(psub_4F17A, 4, PAGE_EXECUTE_READWRITE, &dwBack);
@@ -1116,9 +1164,6 @@ void H2MOD::ApplyHooks() {
 
 		pplayer_death = (player_death)DetourFunc((BYTE*)this->GetBase() + 0x17B674, (BYTE*)OnPlayerDeath, 9);
 		VirtualProtect(pplayer_death, 4, PAGE_EXECUTE_READWRITE, &dwBack);
-
-		//pconnect_establish_write = (tconnect_establish_write)DetourFunc((BYTE*)this->GetBase() + 0x1F1A2D, (BYTE*)connect_establish_write, 5);
-		//VirtualProtect(pconnect_establish_write, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
 		//0x20E15A
 		show_error_screen_method = (show_error_screen)DetourFunc((BYTE*)h2mod->GetBase() + 0x20E15A, (BYTE*)showErrorScreen, 8);
@@ -1171,6 +1216,13 @@ void H2MOD::ApplyHooks() {
 		PatchCall(GetBase() + 0x9B09F, filo_write__encrypted_data_hook);
 		PatchWinAPICall(GetBase() + 0x9AF9E, CryptUnprotectDataHook);
 		PatchWinAPICall(GetBase() + 0x9B08A, CryptProtectDataHook);
+
+		calculate_model_lod = GetBase() + 0x19CA3E;
+		calculate_model_lod_detour_end = GetBase() + 0x19CDA3 + 5;
+		WriteJmpTo(GetBase() + 0x19CDA3, calculate_model_lod_detour);
+
+		// set max model qaulity to L6
+		WriteValue(GetBase() + 0x190B38 + 1, 5);
 	}
 #pragma endregion
 
@@ -1178,6 +1230,9 @@ void H2MOD::ApplyHooks() {
 	else {
 
 		DWORD dwBack;
+
+		on_custom_map_change_method = (on_custom_map_change)DetourFunc((BYTE*)this->GetBase() + 0x25738, (BYTE*)onCustomMapChange, 5);
+		VirtualProtect(on_custom_map_change_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
 		dedi_command_hook_method = (dedi_command_hook)DetourFunc((BYTE*)this->GetBase() + 0x1CCFC, (BYTE*)dediCommandHook, 7);
 		VirtualProtect(dedi_command_hook_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
@@ -1211,341 +1266,6 @@ void H2MOD::ApplyHooks() {
 	//apply any network hooks
 	network->applyNetworkHooks();
 #pragma endregion
-}
-
-
-
-DWORD WINAPI NetworkThread(LPVOID lParam)
-{
-	TRACE_GAME("[h2mod-network] NetworkThread Initializing");
-
-	if (comm_socket == INVALID_SOCKET)
-	{
-		comm_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-		if (comm_socket == INVALID_SOCKET)
-		{
-			TRACE_GAME("[h2mod-network] Socket is invalid even after socket()");
-		}
-
-		SOCKADDR_IN RecvStruct;
-		RecvStruct.sin_port = htons(H2Config_base_port + 7);
-		RecvStruct.sin_addr.s_addr = htonl(INADDR_ANY);
-
-		RecvStruct.sin_family = AF_INET;
-
-		if (bind(comm_socket, (const sockaddr*)&RecvStruct, sizeof RecvStruct) == -1)
-		{
-			TRACE_GAME("[h2mod-network] Would not bind socket!");
-		}
-
-		DWORD dwTime = 20;
-
-		if (setsockopt(comm_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&dwTime, sizeof(dwTime)) < 0)
-		{
-			TRACE_GAME("[h2mod-network] Socket Error on register request");
-		}
-
-		TRACE_GAME("[h2mod-network] Listening on port: %i", ntohs(RecvStruct.sin_port));
-	}
-	else
-	{
-		TRACE_GAME("[h2mod-network] socket already existed continuing without attempting bind...");
-	}
-
-	TRACE_GAME("[h2mod-network] Are we host? %i", isHost);
-
-	NetworkActive = true;
-
-	if (isHost)
-	{
-		TRACE_GAME("[h2mod-network] We're host waiting for a authorization packet from joining clients...");
-
-		while (1)
-		{
-
-			if (NetworkActive == false)
-			{
-				isHost = false;
-				Connected = false;
-				ThreadCreated = false;
-				H2MOD_Network = 0;
-				TRACE_GAME("[h2mod-network] Killing host thread NetworkActive == false");
-				return 0;
-			}
-			sockaddr_in SenderAddr;
-			int SenderAddrSize = sizeof(SenderAddr);
-
-			memset(NetworkData, 0x00, 255);
-			int recvresult = recvfrom(comm_socket, NetworkData, 255, 0, (sockaddr*)&SenderAddr, &SenderAddrSize);
-
-			if (h2mod->NetworkPlayers.size() > 0)
-			{
-				auto it = h2mod->NetworkPlayers.begin();
-				while (it != h2mod->NetworkPlayers.end())
-				{
-					if (it->second == 0)
-					{
-						TRACE_GAME("[h2mod-network] Deleting player %ws as their value was set to 0", it->first->PlayerName);
-
-						//TODO: create delete method for deleting network player
-						if (it->first->PacketsAvailable == true)
-							delete[] it->first->PacketData; // Delete packet data if there is any.
-
-						delete[] it->first->PlayerName; // Delete Player name
-
-						delete[] it->first; // Clear NetworkPlayer object.
-
-						it = h2mod->NetworkPlayers.erase(it);
-
-
-					}
-					else
-					{
-						if (it->first->PacketsAvailable == true) // If there's a packet available we set this to true already.
-						{
-							TRACE_GAME("[h2mod-network] Sending player %ws data", it->first->PlayerName);
-
-							SOCKADDR_IN QueueSock;
-							QueueSock.sin_port = it->first->port; // We can grab the port they connected from.
-							QueueSock.sin_addr.s_addr = it->first->addr; // Address they connected from.
-							QueueSock.sin_family = AF_INET;
-
-							sendto(comm_socket, it->first->PacketData, it->first->PacketSize, 0, (sockaddr*)&QueueSock, sizeof(QueueSock)); // Just send the already serialized data over the socket.
-
-							it->first->PacketsAvailable = false;
-							delete[] it->first->PacketData; // Delete packet data we've sent it already.
-						}
-						it++;
-					}
-				}
-			}
-
-
-			if (recvresult > 0)
-			{
-				bool already_authed = false;
-				H2ModPacket recvpak;
-				recvpak.ParseFromArray(NetworkData, recvresult);
-
-
-				if (recvpak.has_type())
-				{
-					switch (recvpak.type())
-					{
-					case H2ModPacket_Type_authorize_client:
-						TRACE_GAME("[h2mod-network] Player Connected!");
-						if (recvpak.has_h2auth())
-						{
-							if (recvpak.h2auth().has_name())
-							{
-								wchar_t* PlayerName = new wchar_t[36];
-								memcpy(PlayerName, recvpak.h2auth().name().c_str(), 36);
-
-								for (auto it = h2mod->NetworkPlayers.begin(); it != h2mod->NetworkPlayers.end(); ++it)
-								{
-									if (wcscmp(it->first->PlayerName, PlayerName) == 0)
-									{
-
-										TRACE_GAME("[h2mod-network] This player was already connected, sending them another packet letting them know they're authed already.");
-
-										char* SendBuf = new char[recvpak.ByteSize()];
-										recvpak.SerializeToArray(SendBuf, recvpak.ByteSize());
-
-										sendto(comm_socket, SendBuf, recvpak.ByteSize(), 0, (SOCKADDR*)&SenderAddr, sizeof(SenderAddr));
-
-
-										already_authed = true;
-
-										delete[] SendBuf;
-									}
-								}
-
-								if (already_authed == false)
-								{
-									NetworkPlayer *nPlayer = new NetworkPlayer;
-
-
-									TRACE_GAME("[h2mod-network] PlayerName: %ws", PlayerName);
-									TRACE_GAME("[h2mod-network] IP:PORT: %08X:%i", SenderAddr.sin_addr.s_addr, ntohs(SenderAddr.sin_port));
-
-									nPlayer->addr = SenderAddr.sin_addr.s_addr;
-									nPlayer->port = SenderAddr.sin_port;
-									nPlayer->PlayerName = PlayerName;
-									nPlayer->secure = recvpak.h2auth().secureaddr();
-									h2mod->NetworkPlayers[nPlayer] = 1;
-
-									char* SendBuf = new char[recvpak.ByteSize()];
-									recvpak.SerializeToArray(SendBuf, recvpak.ByteSize());
-
-									sendto(comm_socket, SendBuf, recvpak.ByteSize(), 0, (SOCKADDR*)&SenderAddr, sizeof(SenderAddr));
-
-									delete[] SendBuf;
-									
-									if (b_GunGame)
-										gg->AddPlayer(nPlayer);
-								}
-							}
-						}
-						break;
-					case H2ModPacket_Type_h2mod_ping:
-						H2ModPacket pongpak;
-						pongpak.set_type(H2ModPacket_Type_h2mod_pong);
-
-						char* pongdata = new char[pongpak.ByteSize()];
-						pongpak.SerializeToArray(pongdata, pongpak.ByteSize());
-						sendto(comm_socket, pongdata, recvpak.ByteSize(), 0, (SOCKADDR*)&SenderAddr, sizeof(SenderAddr));
-
-						delete[] pongdata;
-						break;
-
-					}
-				}
-
-				Sleep(500);
-			}
-		}
-	}
-	else
-	{
-		Connected = false;
-		TRACE_GAME("[h2mod-network] We're a client connecting to server...");
-
-
-		SOCKADDR_IN SendStruct;
-		SendStruct.sin_port = htons(ntohs(join_game_xn.wPortOnline) + 7);
-		SendStruct.sin_addr.s_addr = join_game_xn.ina.s_addr;
-		SendStruct.sin_family = AF_INET;
-
-		TRACE_GAME("[h2mod-network] Connecting to server on %08X:%i", SendStruct.sin_addr.s_addr, ntohs(SendStruct.sin_port));
-
-		H2ModPacket h2pak;
-		h2pak.set_type(H2ModPacket_Type_authorize_client);
-
-		h2mod_auth *authpak = h2pak.mutable_h2auth();
-		authpak->set_name((char*)h2mod->get_local_player_name(), 32);
-		authpak->set_secureaddr(User.LocalSec);
-
-		char* SendBuf = new char[h2pak.ByteSize()];
-		h2pak.SerializeToArray(SendBuf, h2pak.ByteSize());
-
-		sendto(comm_socket, SendBuf, h2pak.ByteSize(), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
-
-		while (1)
-		{
-			if (NetworkActive == false)
-			{
-				isHost = false;
-				Connected = false;
-				ThreadCreated = false;
-				H2MOD_Network = 0;
-				TRACE_GAME("[h2mod-network] Networkactive == false ending client thread.");
-				return 0;
-			}
-
-			if (Connected == false)
-			{
-				TRACE_GAME("[h2mod-network] Client - we're not connected re-sending our auth..");
-				sendto(comm_socket, SendBuf, h2pak.ByteSize(), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
-			}
-
-			sockaddr_in SenderAddr;
-			int SenderAddrSize = sizeof(SenderAddr);
-
-			memset(NetworkData, 0x00, 255);
-			int recvresult = recvfrom(comm_socket, NetworkData, 255, 0, (sockaddr*)&SenderAddr, &SenderAddrSize);
-
-			if (recvresult > 0)
-			{
-				H2ModPacket recvpak;
-				recvpak.ParseFromArray(NetworkData, recvresult);
-
-				if (recvpak.has_type())
-				{
-					switch (recvpak.type())
-					{
-					case H2ModPacket_Type_authorize_client:
-
-						if (Connected == false)
-						{
-							TRACE("[h2mod-network] Got the auth packet back!, We're connected!");
-							Connected = true;
-						}
-
-						break;
-
-					case H2ModPacket_Type_set_player_team:
-
-						if (recvpak.has_h2_set_player_team())
-						{
-
-							BYTE TeamIndex = recvpak.h2_set_player_team().team();
-
-							TRACE_GAME("[h2mod-network] Got a set team request from server! TeamIndex: %i", TeamIndex);
-							h2mod->set_local_team_index(TeamIndex);
-						}
-
-						break;
-
-					case H2ModPacket_Type_set_unit_grenades:
-						if (recvpak.has_set_grenade())
-						{
-							BYTE type = recvpak.set_grenade().type();
-							BYTE count = recvpak.set_grenade().count();
-							BYTE pIndex = recvpak.set_grenade().pindex();
-
-							h2mod->set_local_grenades(type, count, pIndex);
-						}
-						break;
-					}
-				}
-
-			}
-
-			if (Connected == true)
-			{
-				H2ModPacket pack;
-				pack.set_type(H2ModPacket_Type_h2mod_ping);
-
-				char* SendBuf = new char[pack.ByteSize()];
-				pack.SerializeToArray(SendBuf, pack.ByteSize());
-
-				sendto(comm_socket, SendBuf, pack.ByteSize(), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
-
-				delete[] SendBuf;
-			}
-
-
-			Sleep(500);
-		}
-
-	}
-
-	return 0;
-}
-
-DWORD WINAPI Thread1(LPVOID lParam)
-{
-	char *binarydata = new char[0xAA8 + 1];
-	FILE* binarydump = fopen("binarydump.bin", "r");
-	fread(binarydata, 0xAA8, 1, binarydump);
-
-	while (1)
-	{
-
-		DWORD Base = (DWORD)GetModuleHandleA("halo2.exe");
-
-		DWORD *ServerList = (DWORD*)(*(DWORD*)(Base + 0x96743C));
-		if (ServerList > 0)
-		{
-			memcpy(ServerList, binarydata, 0xAA8);
-			memcpy(ServerList + 0xAA8, binarydata, 0xAA8);
-		}
-
-		//fread((ServerList + 0xAA8), 0xAA8, 1, BinaryDump);
-		//TRACE("ServerList: %08X\n", ServerList);
-		//fwrite(ServerList, 0xAA8, 1, BinaryDump);	
-	}
 }
 
 VOID CALLBACK UpdateDiscordStateTimer(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)

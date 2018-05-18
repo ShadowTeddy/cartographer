@@ -73,6 +73,17 @@ enum Weapon
 	juggernaut_powerup = 0xF33838D2 //35
 };
 
+enum static_lod : DWORD
+{
+	disable = 0,
+	super_low,
+	low,
+	medium,
+	high,
+	super_high,
+	cinematic
+};
+
 int __cdecl call_get_object(signed int object_datum_index, int object_type);
 int __cdecl call_unit_reset_equipment(int unit_datum_index);
 bool __cdecl call_add_object_to_sync(int gamestate_object_datum);
@@ -82,19 +93,6 @@ bool __cdecl call_assign_equipment_to_unit(int uint, int object_index, short unk
 int __cdecl call_object_placement_data_new(void*, int, int, int);
 signed int __cdecl call_object_new(void*);
 void GivePlayerWeapon(int PlayerIndex, int WeaponId, bool bReset);
-DWORD WINAPI NetworkThread(LPVOID lParam);
-
-class NetworkPlayer
-{
-	public:
-		wchar_t* PlayerName;
-		SHORT port;
-		ULONG addr;
-		ULONG secure;
-		bool PacketsAvailable;
-		char* PacketData;
-		size_t PacketSize;
-};
 
 class H2MOD
 {
@@ -125,14 +123,11 @@ public:
 		void set_unit_speed(float speed, int pIndex);
 		void set_local_team_index(BYTE team);
 		BYTE get_local_team_index();
-		void set_unit_grenades(BYTE type, BYTE count, int pIndex, bool bReset);
 		void set_local_grenades(BYTE type, BYTE count, int pIndex);
 		void DisableSound(int sound);
-		void PatchNewRound(bool hackit); 
 		void PatchWeaponsInteraction(bool b_Enable);		
 		void securityPacketProcessing();
 		BOOL Server;
-		std::unordered_map<NetworkPlayer*, bool> NetworkPlayers;
 		std::unordered_map<wchar_t*, int> SoundMap;
 		std::unordered_map<std::string, bool> AchievementMap;
 	

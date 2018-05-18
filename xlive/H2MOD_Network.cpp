@@ -2,8 +2,11 @@
 #include <CUser.h>
 
 //original = 0x3DA8
-#define MEMBERSHIP_PACKET_SIZE 0x3e28
-#define MEMBERSHIP_PACKET_SIZE_RAW_BYTES 0x28, 0x3E
+#define MEMBERSHIP_PACKET_SIZE 0x3DA8
+#define MEMBERSHIP_PACKET_SIZE_RAW_BYTES 0xA8, 0x3D
+//original = 0x194
+#define CHAT_PACKET_SIZE 0x2B5
+#define CHAT_PACKET_SIZE_RAW_BYTES 0xB5, 0x02
 
 const char* getTextForEnum(int enumVal) {
 	return packet_type_strings[enumVal];
@@ -66,7 +69,7 @@ membership_update_write membership_update_write_method;
 
 DWORD lengthOfMapName = 0x80;
 std::string mapName("map-name");
-//TODO: 
+//TODO: implement
 std::string isP2pSupported("p2p-supported");
 
 void __cdecl membershipUpdateWrite(void* a1, int a2, int a3) {
@@ -88,7 +91,7 @@ DWORD targetData = 0;
 void memberUpdateReadCave() {
 	char* mapNameToRead = (char*)(targetData + (MEMBERSHIP_PACKET_SIZE - lengthOfMapName));
 	getDataDecodeStringMethod()((void*)packet, (int)mapName.c_str(), (int)mapNameToRead, lengthOfMapName);
-	mapManager->setClientMapFilename(std::string(mapNameToRead));
+	mapManager->setMapFileNameToDownload(std::string(mapNameToRead));
 	TRACE_GAME_N("[H2MOD-network] mapNameRead=%s", mapNameToRead);
 	TRACE_GAME("[h2mod-network] memberupdate code cave");
 }
@@ -128,6 +131,7 @@ __declspec(naked) void membershipUpdateReadCave(void) {
 }
 
 void afterMapsLoadedCave() {
+	TRACE_GAME("[h2mod-network] after maps loaded");
 	mapManager->reloadMapFilenames();
 	gameManager->start();
 }
@@ -215,7 +219,7 @@ trigger_membership_packet trigger_membership_packet_method;
 
 unsigned int __stdcall triggerMembershipPacketData(int thisx) {
 	//return trigger_membership_packet_method(thisx);
-	
+
 	int v1; // ebx@1
 	int v2; // esi@1
 	int v3; // edi@2
@@ -226,7 +230,7 @@ unsigned int __stdcall triggerMembershipPacketData(int thisx) {
 	int *v8; // eax@22
 	int v10; // [sp+Ch] [bp-7B5Ch]@1
 	int v11; // [sp+10h] [bp-7B58h]@1
-	//below are two stack arrays that 
+			 //below are two stack arrays that 
 	int a7[MEMBERSHIP_PACKET_SIZE]; // [sp+14h] [bp-7B54h]@18
 	char v13[MEMBERSHIP_PACKET_SIZE]; // [sp+3DBCh] [bp-3DACh]@16
 
@@ -263,22 +267,22 @@ unsigned int __stdcall triggerMembershipPacketData(int thisx) {
 					//TRACE_GAME("CONDITION1, %d", *(BYTE *)(v3 - 1));
 					if ((*(DWORD *)&v4[1856 * *(DWORD *)v3 + 128] == 7 && *(DWORD *)(v3 + 4) != *(DWORD *)(v2 + 112)))
 					{
-						TRACE_GAME("CONDITION2, firstArg=%d, secondArg=%d, thirdArg=%d", *(DWORD *)&v4[1856 * *(DWORD *)v3 + 128], *(DWORD *)(v3 + 4), *(DWORD *)(v2 + 112));
+						//TRACE_GAME("CONDITION2, firstArg=%d, secondArg=%d, thirdArg=%d", *(DWORD *)&v4[1856 * *(DWORD *)v3 + 128], *(DWORD *)(v3 + 4), *(DWORD *)(v2 + 112));
 						if (sub_13FD95D(v4, *(DWORD *)(v2 + 20), *(DWORD *)v3, 0x19u))
 						{
-							TRACE_GAME("CONDITION3");
+							//TRACE_GAME("CONDITION3");
 							sub_13FD9FA(*(void **)(v2 + 8), *(DWORD *)(v2 + 20), *(DWORD *)v3, 0x19u);
 						}
 						else if (*(DWORD *)(v2 + 29600) != 8)
 						{
-							TRACE_GAME("CONDITION4, arg=%d", *(DWORD *)(v2 + 29600));
+							//TRACE_GAME("CONDITION4, arg=%d", *(DWORD *)(v2 + 29600));
 							v5 = *(DWORD *)(v3 + 4);
 							if (v5 == -1 || v5 != *(DWORD *)(v2 + 0x24E0)) {
-								TRACE_GAME("CONDITION5");
+								//TRACE_GAME("CONDITION5");
 								v10 |= 1 << v1;
-							} 
+							}
 							else {
-								TRACE_GAME("CONDITION6");
+								//TRACE_GAME("CONDITION6");
 								v11 |= 1 << v1;
 							}
 						}
@@ -289,11 +293,11 @@ unsigned int __stdcall triggerMembershipPacketData(int thisx) {
 			v3 += 28;
 		} while (v1 < *(DWORD *)(v2 + 132));
 		if (v10) {
-			TRACE_GAME("CONDITION7");
+			//TRACE_GAME("CONDITION7");
 			generate_membership_packet_data_method((DWORD *)v2, v2 + 112, 0, (int)&v13);
 		}
 		if (v11) {
-			TRACE_GAME("CONDITION8");
+			//TRACE_GAME("CONDITION8");
 			generate_membership_packet_data_method((DWORD *)v2, v2 + 112, v2 + 9440, (int)&a7);
 		}
 	}
@@ -306,12 +310,12 @@ unsigned int __stdcall triggerMembershipPacketData(int thisx) {
 			//TRACE_GAME("CONDITION9");
 			if (((1 << v6) & v10))
 			{
-				TRACE_GAME("CONDITION10");
+				//TRACE_GAME("CONDITION10");
 				v8 = (int *)&v13;
 			LABEL_25:
 				*(DWORD *)(v7 + 7) = *(DWORD *)(v2 + 112);
 				if (*(BYTE *)v7) {
-					TRACE_GAME("CONDITION11");
+					//TRACE_GAME("CONDITION11");
 
 					dynamic_packet_check(
 						*(void **)(v2 + 8),
@@ -421,17 +425,6 @@ bool __cdecl closed_read(int a1, int a2, int a3) {
 typedef char*(__cdecl *register_connection_packets)(void* a1);
 register_connection_packets register_connection_packets_method;
 
-std::string customPacketType = "customPacket";
-std::string customPacketField = "specialint";
-int __cdecl custom_packet_write(void* a1, int a2, int a3) {
-	return getDataEncodeIntegerMethod()(a1, (int)customPacketField.c_str(), 67, 32);
-}
-
-bool __cdecl custom_packet_read(int a1, int a2, int a3) {
-	int specialInt = getDataDecodeIntegerMethod()(a1, (int)customPacketField.c_str(), 32);
-	bool isValid = getIsValidPacketMethod()(a1);
-	return isValid;
-}
 char* __cdecl registerConnectionPackets(void* packetObject) {
 	typedef char*(__thiscall *register_packet_type)(void *packetObject, int type, int name, int a4, int size1, int size2, int write_packet_method, int read_packet_method, int a9);
 	register_packet_type register_packet = (register_packet_type)(h2mod->GetBase() + (h2mod->Server ? 0x1CA199 : 0x1E81D6));
@@ -446,11 +439,6 @@ char* __cdecl registerConnectionPackets(void* packetObject) {
 	register_packet(packetObject, 5, (int)"connect-refuse", 0, 8, 8, (int)refuse_write, (int)refuse_read, 0); //refuse
 	register_packet(packetObject, 6, (int)"connect-establish", 0, 8, 8, (int)establish_write, (int)establish_read, 0); //establish
 
-	//TODO: make work
-	//registers custom packet type
-	//register_packet(packetObject, 66, (int)customPacketType.c_str(), 0, 8, 8, (int)custom_packet_write, (int)custom_packet_read, 0);
-
-
 	return register_packet(packetObject, 7, (int)"connect_closed", 0, 12, 12, (int)closed_write, (int)closed_read, 0); //closed
 }
 
@@ -461,41 +449,41 @@ char* __cdecl registerPlayerPackets(void* packetObject) {
 	typedef char*(__thiscall *register_packet_type)(void *packetObject, int type, int name, int a4, int size1, int size2, int write_packet_method, int read_packet_method, int a9);
 	register_packet_type register_packet = (register_packet_type)(h2mod->GetBase() + (h2mod->Server ? 0x1CA199 : 0x1E81D6));
 
-	register_packet(packetObject, 25, (int)"membership-update",	0, MEMBERSHIP_PACKET_SIZE, MEMBERSHIP_PACKET_SIZE, 
+	register_packet(packetObject, 25, (int)"membership-update", 0, MEMBERSHIP_PACKET_SIZE, MEMBERSHIP_PACKET_SIZE,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0072 : 0x1EF6B9)),
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0496 : 0x1EFADD)), 0);
 
-	register_packet(packetObject, 37, (int)"virtual-couch-update", 0, 216, 216, 
-		(int)(h2mod->GetBase() + (h2mod->Server ?  0x1D09FB : 0x1F0042)),
+	register_packet(packetObject, 37, (int)"virtual-couch-update", 0, 216, 216,
+		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D09FB : 0x1F0042)),
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0AFC : 0x1F0143)), 0);
 
-	register_packet(packetObject, 38, (int)"virtual-couch-request", 0, 208, 208, 
+	register_packet(packetObject, 38, (int)"virtual-couch-request", 0, 208, 208,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0C1D : 0x1F0264)),
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0CD6 : 0x1F031D)), 0);
 
-	register_packet(packetObject, 26, (int)"peer-properties", 0, 208, 208, 
+	register_packet(packetObject, 26, (int)"peer-properties", 0, 208, 208,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0DAE : 0x1F03F5)),
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0E99 : 0x1F04E0)), 0);
 
-	register_packet(packetObject, 27, (int)"delegate-leadership", 0, 44, 44, 
+	register_packet(packetObject, 27, (int)"delegate-leadership", 0, 44, 44,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0FA7 : 0x1F05EE)),
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D0FD3 : 0x1F061A)), 0);
 
-	register_packet(packetObject, 28, (int)"boot-machine", 0, 44, 44, 
+	register_packet(packetObject, 28, (int)"boot-machine", 0, 44, 44,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D100B : 0x1F0652)),
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D1037 : 0x1F067E)), 0);
 
-	register_packet(packetObject, 29, (int)"player-add", 0, 168, 168, 
+	register_packet(packetObject, 29, (int)"player-add", 0, 168, 168,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D106F : 0x1F06B6)),
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D110B : 0x1F0752)), 0);
 
-	register_packet(packetObject, 30, (int)"player-refuse",	0, 20, 20, 
+	register_packet(packetObject, 30, (int)"player-refuse", 0, 20, 20,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D11D8 : 0x1F081F)),
-		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D1218 : 0x1F085F)),	0);
+		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D1218 : 0x1F085F)), 0);
 
-	register_packet(packetObject, 31, (int)"player-remove",	0, 12, 12, 
+	register_packet(packetObject, 31, (int)"player-remove", 0, 12, 12,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D1275 : 0x1F08BC)),
-		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D12A3 : 0x1F08EA)),	0);
+		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D12A3 : 0x1F08EA)), 0);
 
 	return register_packet(packetObject, 32, (int)"player-properties", 0, 156, 156,
 		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1D12EE : 0x1F0935)),
@@ -562,60 +550,348 @@ char __stdcall receivePacket(void *thisx, int a2, int packetType, unsigned int *
 	return result;
 }
 
-void patchBYTEs(BYTE* orig, BYTE* values, int size) {
-	DWORD dwBack;
-	VirtualProtect(orig, size, PAGE_EXECUTE_READWRITE, &dwBack);
-	memcpy(orig, (BYTE*)values, size);
-	VirtualProtect(orig, size, dwBack, NULL);
+typedef void(__stdcall  *receive_data_from_socket)(DWORD* thisx);
+receive_data_from_socket receive_data_from_socket_method;
+
+void __stdcall receiveDataFromSocket(DWORD* thisx) {
+	DWORD *v1; // ebp@1
+	char v2; // bl@2
+	signed int v3; // edi@2
+	DWORD *v4; // ebp@2
+	int v5; // esi@5
+	DWORD *v6; // [sp+10h] [bp-1E4Ch]@1
+	unsigned int a1; // [sp+14h] [bp-1E48h]@0
+	int v8; // [sp+18h] [bp-1E44h]@0
+	int v9; // [sp+1Ch] [bp-1E40h]@6
+	int v10; // [sp+20h] [bp-1E3Ch]@11
+	int v11; // [sp+24h] [bp-1E38h]@11
+	int v12; // [sp+28h] [bp-1E34h]@11
+	int v13; // [sp+2Ch] [bp-1E30h]@11
+	int a3; // [sp+30h] [bp-1E2Ch]@11
+	int v15; // [sp+38h] [bp-1E24h]@11
+	int v16; // [sp+3Ch] [bp-1E20h]@11
+	int v17; // [sp+40h] [bp-1E1Ch]@11
+	int v18; // [sp+44h] [bp-1E18h]@11
+	int v19; // [sp+48h] [bp-1E14h]@11
+	char buf[4096]; // [sp+E58h] [bp-1004h]@5
+	char *ptr = buf;
+
+	typedef int(__cdecl *h2_calls_socketrecvfrom_type)(int a1, char* buf, int len);
+	h2_calls_socketrecvfrom_type h2_calls_socketrecvfrom = (h2_calls_socketrecvfrom_type)(h2mod->GetBase() + 0x1F565D);
+
+	typedef bool(__cdecl *sub_1261E77_type)(int a1);
+	sub_1261E77_type sub_1261E77 = (sub_1261E77_type)(h2mod->GetBase() + 0x1F1E77);
+
+	typedef char(__stdcall *sub_122A93B_type)(unsigned int a1, char* buf, int a3);
+	sub_122A93B_type sub_122A93B = (sub_122A93B_type)(h2mod->GetBase() + 0x1BA93B);
+
+	typedef int(__thiscall *h2_calls_packet_dispatcher_type)(DWORD* thisx, int a2);
+	h2_calls_packet_dispatcher_type h2_calls_packet_dispatcher = (h2_calls_packet_dispatcher_type)(h2mod->GetBase() + 0x1BAFB0);
+
+	v1 = thisx;
+	v6 = thisx;
+	do
+	{
+		v2 = 0;
+		v3 = 0;
+		v4 = v1 + 3;
+		while (v3 < 4)
+		{
+			if (*v4)
+			{
+				v5 = h2_calls_socketrecvfrom(*v4, ptr, 4096);
+				if (v5 > 0 && sub_1261E77((int)&v9))
+				{
+					TRACE_GAME_N("[h2mod-network] received socket data %s", ptr);
+					a1 = v5;
+					v8 = v3;
+					v2 = 1;
+				}
+			}
+			++v3;
+			++v4;
+			if (v2)
+				goto LABEL_11;
+		}
+		if (!v2)
+			return;
+	LABEL_11:
+		memset((char *)&a3, 0, 3624);
+		v1 = v6;
+		a3 = v8;
+		v15 = v9;
+		v16 = v10;
+		v17 = v11;
+		v18 = v12;
+		v19 = v13;
+		if (sub_122A93B(a1, ptr, (int)&a3))
+			h2_calls_packet_dispatcher(v6, (int)&a3);
+	} while (v2);
+}
+
+std::string bb("BBBXYTZ");
+
+typedef int(__cdecl *serialize_chat_packet_type)(void* a1, int a2, int a3);
+serialize_chat_packet_type serialize_chat_packet_method;
+
+int __cdecl serializeChatPacket(void* a1, int a2, int a3) {
+	unsigned int v3; // ebx@3
+	int v4; // ebp@4
+
+	getDataEncodeIdMethod()(a1, (int)"session-id", a3, 64);
+	getDataEncodeIntegerMethod()(a1, (int)"routed-players", *(DWORD *)(a3 + 8), 32);
+	getDataEncodeIntegerMethod()(a1, (int)"metadata", *(DWORD *)(a3 + 12), 8);
+	//*(BYTE *)(a3 + 16) = gameManager->isHost();
+	getDataEncodeBooleanMethod()((int)a1, (int)"source-is-server", *(BYTE *)(a3 + 16));
+	if (!*(BYTE *)(a3 + 16))
+		getDataEncodeIdMethod()(a1, (int)"source-player", a3 + 17, 64);
+	getDataEncodeIntegerMethod()(a1, (int)"destination-player-count", *(DWORD *)(a3 + 156), 8);
+	v3 = 0;
+	if (*(DWORD *)(a3 + 156))
+	{
+		v4 = a3 + 25;
+		do
+		{
+			getDataEncodeIdMethod()(a1, (int)"destination-player", v4, 64);
+			++v3;
+			v4 += 8;
+		} while (v3 < *(DWORD *)(a3 + 156));
+	}
+	int result = getDataEncodeStringMethod()(a1, (int)"text", a3 + 160, 121);
+
+	if (network->networkCommand != NULL && network->networkCommand[0] != '\0') {
+		char* commandToWrite = (char*)(a3 + (CHAT_PACKET_SIZE - 121));
+		memset(commandToWrite, 0, 121);
+		memcpy(commandToWrite, network->networkCommand, strlen(network->networkCommand));
+		//TODO: if text is precense, don't send over the command, as this call stack is from someone sending text
+		result = getDataEncodeStringMethod()(a1, (int)"command", (int)commandToWrite, 121);
+	}
+
+	return result;
+}
+// This variable holds the return address, it must be global!
+DWORD retAddr3 = 0;
+DWORD packet2 = 0;
+DWORD targetData2 = 0;
+
+void deserializeChatPacketCave() {
+	DWORD originalESIRegisterAddr = targetData2 - 0x0A0;
+	BYTE isServer = *(BYTE*)(originalESIRegisterAddr + 0x10);
+	wchar_t* text = (wchar_t*)(targetData2);
+
+	char* command = (char*)(targetData2 + (CHAT_PACKET_SIZE - 121));
+	getDataDecodeStringMethod()((void*)packet2, (int)"command", (int)command, 121);
+	TRACE_GAME_N("[h2mod-network] chat packet deserialize code cave, commandText=%s", command);
+	TRACE_GAME("[h2mod-network] chat packet deserialize code cave, isFromServer=%d, text=%s", isServer, text);
+
+	if (command != NULL && command[0] != '\0') {
+		network->queuedNetworkCommands.push_front(command);
+	}
+}
+
+
+__declspec(naked) void deserializeChatPacket(void) {
+	__asm {
+		// The first thing we must do in our codecave is save 
+		// the return address from the top of the stack
+		pop retAddr3
+
+		// Remember that we need to preserve registers and the stack!
+		PUSHAD
+		PUSHFD
+
+		//ecx gets reset after every data decode/encode call
+		mov packet2, edi
+		mov targetData2, esi
+	}
+	deserializeChatPacketCave();
+	__asm {
+		// Restore everything to how it was before
+		POPFD
+		POPAD
+
+		//rewrite overwritten bytes
+		pop edi
+		setz al
+		pop esi
+
+		// The last thing we must do in our codecave is push 
+		// the return address back onto the stack and then RET back
+		push retAddr3
+		ret
+	}
+}
+
+int CustomNetwork::getPacketOffset() {
+	int packetOffset = (*(int*)(h2mod->GetBase() + (h2mod->Server ? 0x520B94 : 0x51C474)));
+	int packetOffsetTmp = *(DWORD *)(packetOffset + 29600);
+	if (packetOffsetTmp == 5 || packetOffsetTmp == 6 || packetOffsetTmp == 7 || packetOffsetTmp == 8) {
+		//valid memory offset
+		return packetOffset;
+	}
+
+	packetOffset = (*(int*)(h2mod->GetBase() + (h2mod->Server ? 0x520B94 : 0x51C474))) + 31624;
+	return packetOffset;// there can't be any other place for the data
+}
+
+void CustomNetwork::sendCustomPacket(int peerIndex) {
+	int packetDataObj = this->getPacketOffset();
+	typedef int(__thiscall* sub_12320C8_type)(int thisx, DWORD* a2, DWORD* a3);
+	sub_12320C8_type sub_12320C8 = (sub_12320C8_type)(h2mod->GetBase() + (h2mod->Server ? 0x1997DB : 0x1C20C8));
+
+	typedef char(__thiscall *dynamic_packet_check_method)(void *thisx, int a2, int a3, char a4, unsigned int type, unsigned int size, int a7);
+	dynamic_packet_check_method dynamic_packet_check = (dynamic_packet_check_method)(h2mod->GetBase() + (h2mod->Server ? 0x1B8C1A : 0x1BED40));
+
+	BYTE packetdata[CHAT_PACKET_SIZE];
+	memset(packetdata, 0, (sizeof BYTE) * CHAT_PACKET_SIZE);
+
+	int playerCountAddr = sub_12320C8((int)packetDataObj, 0, 0);
+	if (*(DWORD *)(playerCountAddr + 20) > 0)
+	{
+		if (peerIndex != *(DWORD *)(packetDataObj + 29120))
+		{
+			//only send the command packet to the given peer index
+			char* newPacketObject = (char*)(packetDataObj);
+			dynamic_packet_check(
+				*((void **)newPacketObject + 2),
+				*((DWORD *)newPacketObject + 5),
+				*(DWORD *)&newPacketObject[28 * peerIndex + 29128],
+				0,
+				0x2F,
+				CHAT_PACKET_SIZE,
+				(int)&packetdata);
+		}
+	}
+}
+
+void CustomNetwork::sendCustomPacketToAllPlayers() {
+	int packetDataObj = this->getPacketOffset();
+	typedef int(__thiscall* sub_12320C8_type)(int thisx, DWORD* a2, DWORD* a3);
+	sub_12320C8_type sub_12320C8 = (sub_12320C8_type)(h2mod->GetBase() + (h2mod->Server ? 0x1997DB : 0x1C20C8));
+
+	typedef char(__thiscall *dynamic_packet_check_method)(void *thisx, int a2, int a3, char a4, unsigned int type, unsigned int size, int a7);
+	dynamic_packet_check_method dynamic_packet_check = (dynamic_packet_check_method)(h2mod->GetBase() + (h2mod->Server ? 0x1B8C1A : 0x1BED40));
+
+	BYTE packetdata[CHAT_PACKET_SIZE];
+	memset(packetdata, 0, (sizeof BYTE) * CHAT_PACKET_SIZE);
+
+	int playerCountAddr = sub_12320C8((int)packetDataObj, 0, 0);
+	int playerCounter = 0;
+	int peerCount = *(DWORD *)(playerCountAddr + 20);
+	TRACE_GAME("[h2mod-network] Peer count %d", peerCount);
+	if (peerCount > 0)
+	{
+		do
+		{
+			if (h2mod->Server && playerCounter == 0) {
+				++playerCounter;
+				continue;
+			}
+			else {
+				if (playerCounter != *(DWORD *)(packetDataObj + 29120))
+				{
+					int shiftCounter = h2mod->Server ? 1 : 0;
+					int peerIndex = players->getPeerIndex(playerCounter - shiftCounter);
+					if (wcslen(players->getPlayerName(playerCounter - shiftCounter)) == 0) {
+						//if we can't find a player name, either member data is not available or something terrible has gone wrong
+						++playerCounter;
+						continue;
+					}
+					TRACE_GAME("[h2mod-network] sending packet to all players, playerIndex=%d, peerIndex=%d, peerName=%s", playerCounter, peerIndex, players->getPlayerName(playerCounter - shiftCounter));
+					//only send the command packet to the given peer index
+					char* newPacketObject = (char*)(packetDataObj);
+					dynamic_packet_check(
+						*((void **)newPacketObject + 2),
+						*((DWORD *)newPacketObject + 5),
+						*(DWORD *)&newPacketObject[28 * peerIndex + 29128],
+						0,
+						0x2F,
+						CHAT_PACKET_SIZE,
+						(int)&packetdata);
+				}
+			}
+			++playerCounter;
+		} while (playerCounter < peerCount);
+	}
+}
+
+typedef char*(__cdecl *register_chat_packets)(void* packetObject);
+register_chat_packets register_chat_packets_method;
+
+char* __cdecl registerChatPackets(void* packetObject) {
+	typedef char*(__thiscall *register_packet_type)(void *packetObject, int type, int name, int a4, int size1, int size2, int write_packet_method, int read_packet_method, int a9);
+	register_packet_type register_packet = (register_packet_type)(h2mod->GetBase() + (h2mod->Server ? 0x1CA199 : 0x1E81D6));
+
+	return register_packet(
+		packetObject,
+		0x2F,
+		(int)"text chat",
+		0,
+		CHAT_PACKET_SIZE,
+		CHAT_PACKET_SIZE,
+		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1CD7E1 : 0x1ECE28)),
+		(int)(h2mod->GetBase() + (h2mod->Server ? 0x1CD8A4 : 0x1ECEEB)),
+		0);
 }
 
 void CustomNetwork::applyNetworkHooks() {
 	DWORD dwBack;
-	DWORD triggerMembershipPacketOffset = 0x1CA3E0;
-	DWORD generateMembershipDataPacketOffset = 0x1C3811;
-	DWORD serializeMembershipDataPacketOffset = 0x1EF6B9;
-	DWORD deserializeMembershipDataPacketCaveOffset = 0x1F0032;
 	DWORD registerConnectionPacketsOffset = 0x1F1B36;
 	DWORD registerPlayerPacketsOffset = 0x1F0A55;
 	DWORD serializePacketsOffset = 0x1E8296;
 	DWORD deserializePacketsOffset = 0x1E82E0;
+	DWORD serializeTextChatPacketsOffset = 0x1ECE28;
+	DWORD deserializeTextChatPacketsOffset = 0x1ECFAC;
+	DWORD registerChatPacketsOffset = 0x1ECFB7;
+	DWORD sendChatPacketOffset = 0x1CADF7;
+	DWORD sendChatPacketOffset2 = 0x1C81EC;
+
 	if (h2mod->Server) {
-		triggerMembershipPacketOffset = 0x1A1968;
-		generateMembershipDataPacketOffset = 0x19AEC9;
-		serializeMembershipDataPacketOffset = 0x1D0072;
-		deserializeMembershipDataPacketCaveOffset = 0x1D09EB;
 		registerConnectionPacketsOffset = 0x1D24EF;
 		registerPlayerPacketsOffset = 0x1D140E;
 		serializePacketsOffset = 0x1CA259;
 		deserializePacketsOffset = 0x1CA2A3;
+		serializeTextChatPacketsOffset = 0x1CD7E1;
+		deserializeTextChatPacketsOffset = 0x1CD965;
+		registerChatPacketsOffset = 0x1CD970;
+		sendChatPacketOffset = 0x19F9DC;
+		sendChatPacketOffset2 = 0x1A237F;
 	}
 
-	////////////////////////////////////
-	//member packet customizations below
-	////////////////////////////////////
-	BYTE bytes[5] = { 0x68, MEMBERSHIP_PACKET_SIZE_RAW_BYTES, 0x00, 0x00 };
-	patchBYTEs((BYTE*)h2mod->GetBase() + generateMembershipDataPacketOffset, bytes, 5);
-
-	trigger_membership_packet_method = (trigger_membership_packet)DetourClassFunc((BYTE*)h2mod->GetBase() + triggerMembershipPacketOffset, (BYTE*)triggerMembershipPacketData, 10);
-	VirtualProtect(trigger_membership_packet_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
-
-	membership_update_write_method = (membership_update_write)DetourFunc((BYTE*)h2mod->GetBase() + serializeMembershipDataPacketOffset, (BYTE*)membershipUpdateWrite, 5);
-	VirtualProtect(membership_update_write_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
-
-	Codecave(h2mod->GetBase() + deserializeMembershipDataPacketCaveOffset, membershipUpdateReadCave, 0);
+	///////////////////////////////////////////////
+	//map loading customizations below
+	///////////////////////////////////////////////
 
 	//we hook the spot in dedi and peers where the main game data is loaded so we can do stuff with it after
 	if (h2mod->Server) {
 		Codecave(h2mod->GetBase() + 0x1A2F9, afterMapsLoadDedi, 2);
-	} else {
-		Codecave(h2mod->GetBase() + 0x4D311, afterMapsLoaded, 0);
 	}
-	
+
+	///////////////////////////////////////////////
+	//connection/player packet customizations below
+	///////////////////////////////////////////////
+
 	register_connection_packets_method = (register_connection_packets)DetourFunc((BYTE*)h2mod->GetBase() + registerConnectionPacketsOffset, (BYTE*)registerConnectionPackets, 5);
 	VirtualProtect(register_connection_packets_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 
 	register_player_packets_method = (register_player_packets)DetourFunc((BYTE*)h2mod->GetBase() + registerPlayerPacketsOffset, (BYTE*)registerPlayerPackets, 5);
 	VirtualProtect(register_player_packets_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+	///////////////////////////////////////
+	//text chat packet customizations below
+	///////////////////////////////////////
+
+	serialize_chat_packet_method = (serialize_chat_packet_type)DetourFunc((BYTE*)h2mod->GetBase() + serializeTextChatPacketsOffset, (BYTE*)serializeChatPacket, 6);
+	VirtualProtect(serialize_chat_packet_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+	Codecave(h2mod->GetBase() + deserializeTextChatPacketsOffset, deserializeChatPacket, 0);
+
+	register_chat_packets_method = (register_chat_packets)DetourFunc((BYTE*)h2mod->GetBase() + registerChatPacketsOffset, (BYTE*)registerChatPackets, 6);
+	VirtualProtect(register_chat_packets_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+	BYTE bytes2[5] = { 0x68, CHAT_PACKET_SIZE_RAW_BYTES, 0x00, 0x00 };
+	patchBYTEs((BYTE*)h2mod->GetBase() + sendChatPacketOffset, bytes2, 5);
+	patchBYTEs((BYTE*)h2mod->GetBase() + sendChatPacketOffset2, bytes2, 5);
 
 	/////////////////////////////////////////////////////////////////////
 	//send/recv packet functions below (for troubleshooting and research)
@@ -625,4 +901,7 @@ void CustomNetwork::applyNetworkHooks() {
 
 	//receive_packet_method = (receive_packet)DetourClassFunc((BYTE*)h2mod->GetBase() + deserializePacketsOffset, (BYTE*)receivePacket, 11);
 	//VirtualProtect(receive_packet_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
+
+	//receive_data_from_socket_method = (receive_data_from_socket)DetourClassFunc((BYTE*)h2mod->GetBase() + 0x1BAFB5, (BYTE*)receiveDataFromSocket, 10);
+	//VirtualProtect(receive_data_from_socket_method, 4, PAGE_EXECUTE_READWRITE, &dwBack);
 }

@@ -198,14 +198,20 @@
     <ClCompile Include="H2MOD_Network.cpp">
       <Filter>Source Files\H2MOD\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="H2MOD_Players.cpp">
+      <Filter>Source Files\H2MOD\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="H2MOD_GameType.cpp">
+      <Filter>Source Files\H2MOD\Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="discord\DiscordInterface.cpp">
       <Filter>Source Files\Discord</Filter>
     </ClCompile>
-    <ClCompile Include="Blam\Engine\FileSystem\FiloInterface.cpp">
-      <Filter>Source Files\Blam\Engine\FileSystem</Filter>
-    </ClCompile>
     <ClCompile Include="Util\Debug.cpp">
       <Filter>Source Files\Util\Debug</Filter>
+    </ClCompile>
+    <ClCompile Include="H2MOD_ServerList.cpp">
+      <Filter>Source Files\H2MOD\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -326,13 +332,19 @@
     <ClInclude Include="H2MOD_Network.h">
       <Filter>Source Files\H2MOD\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="H2MOD_Players.h">
+      <Filter>Source Files\H2MOD\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="H2MOD_GameType.h">
+      <Filter>Source Files\H2MOD\Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Blam\BlamLibrary.h">
-      <Filter>Source Files\Blam</Filter>
-    </ClInclude>
-    <ClInclude Include="Blam\Enums\Enums.h">
-      <Filter>Source Files\Blam\Enums</Filter>
-    </ClInclude>
-    <ClInclude Include="Blam\Enums\Players\Players.h">
+	  <Filter>Source Files\Blam</Filter>
+	</ClInclude>
+	<ClInclude Include="Blam\Enums\Enums.h">
+	  <Filter>Source Files\Blam\Enums</Filter>
+	</ClInclude>
+	<ClInclude Include="Blam\Enums\Players\Players.h">
       <Filter>Source Files\Blam\Enums\Players</Filter>
     </ClInclude>
     <ClInclude Include="Blam\Enums\Game\GameTimeGlobals.h">
@@ -347,6 +359,9 @@
     <ClInclude Include="Blam\Maths\RealColorRGB.h">
       <Filter>Source Files\Blam\Maths</Filter>
     </ClInclude>
+    <ClInclude Include="Blam\Maths\RealMovement.h">
+      <Filter>Source Files\Blam\Maths</Filter>
+    </ClInclude>
     <ClInclude Include="Blam\Maths\RealPoint2D.h">
       <Filter>Source Files\Blam\Maths</Filter>
     </ClInclude>
@@ -359,7 +374,13 @@
     <ClInclude Include="Blam\Maths\RealVector3D.h">
       <Filter>Source Files\Blam\Maths</Filter>
     </ClInclude>
-    <ClInclude Include="Blam\Shared\SharedDefinitions.h">
+    <ClInclude Include="Blam\Shared\DatumIndex.h">
+      <Filter>Source Files\Blam\Shared</Filter>
+    </ClInclude>
+    <ClInclude Include="Blam\Shared\Globals.h">
+      <Filter>Source Files\Blam\Shared</Filter>
+     </ClInclude>
+	<ClInclude Include="Blam\Shared\SharedDefinitions.h">
       <Filter>Source Files\Blam\Shared</Filter>
     </ClInclude>
     <ClInclude Include="Blam\Engine\EngineDefinitions.h">
@@ -418,6 +439,9 @@
     </ClInclude>
     <ClInclude Include="Util\Debug.h">
       <Filter>Source Files\Util\Debug</Filter>
+    </ClInclude>
+    <ClInclude Include="H2MOD_ServerList.h">
+      <Filter>Source Files\H2MOD\Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

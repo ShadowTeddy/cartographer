@@ -17,6 +17,7 @@
 #include "H2Config.h"
 #include <time.h>
 
+
 extern ConsoleCommands* commands;
 
 
@@ -159,6 +160,9 @@ int WINAPI XLiveInput(XLIVE_INPUT_INFO* pPii)
 		GetWindowRect(H2hWnd, &rectScreenOriginal);
 		once1 = true;
 	}
+	if ((GetKeyState(pPii->wParam) & 0x8000) && (pPii->uMSG == WM_KEYDOWN || pPii->uMSG == WM_SYSKEYDOWN)) {
+		pPii->fHandled = commands->handleInput(pPii->wParam);
+	}
 	return 1;
 }
 
@@ -167,9 +171,12 @@ int WINAPI XLivePreTranslateMessage(const LPMSG lpMsg)
 {
 	return 0;
 }
+
+
 // #5000: XLiveInitialize
 int WINAPI XLiveInitialize(XLIVE_INITIALIZE_INFO* pPii)
 {
+		
 		InitInstance();
 		TRACE("XLiveInitialize()");
 		lastRenderTime = 0.0f;
@@ -551,7 +558,8 @@ int WINAPI XLiveRender()
 					std::unique_lock<std::mutex> lck(h2mod->sound_mutex);
 
 					h2mod->SoundMap[L"sounds/AchievementUnlocked.wav"] = 0;
-
+					//unlock immediately after modifying sound map
+					lck.unlock();
 					h2mod->sound_cv.notify_one();
 
 					it->second = true;
